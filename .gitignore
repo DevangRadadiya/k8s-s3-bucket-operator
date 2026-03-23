@@ -1,0 +1,21 @@
+# Binaries
+/bin/
+kind
+kubectl
+*.tar.gz
+*.exe
+
+# Go
+vendor/
+cover.out
+go.work
+go.work.sum
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Local system
+.DS_Store
+.gemini/

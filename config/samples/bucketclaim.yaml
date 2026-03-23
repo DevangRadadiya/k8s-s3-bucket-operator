@@ -1,0 +1,14 @@
+# BucketClaim — created by developers, one per app bucket
+# The operator will automatically:
+#   1. Create the bucket in MinIO
+#   2. Create a scoped user + policy
+#   3. Store credentials in a Secret named "<claim-name>-credentials"
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: my-app-images
+  namespace: my-app
+spec:
+  bucketClassName: minio-standard
+  protocols:
+    - S3

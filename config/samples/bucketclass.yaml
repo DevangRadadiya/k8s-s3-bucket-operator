@@ -1,0 +1,13 @@
+# BucketClass — created once by cluster admin per MinIO backend
+# Defines which driver handles provisioning and what parameters to use
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: minio-standard
+driverName: k8s-s3-bucket-operator
+deletionPolicy: Delete
+parameters:
+  region: "us-east-1"
+  # endpoint is read from the operator's MINIO_ENDPOINT env var
+  # Override per-class if you have multiple MinIO instances:
+  # endpoint: "minio.other-ns.svc.cluster.local:9000"

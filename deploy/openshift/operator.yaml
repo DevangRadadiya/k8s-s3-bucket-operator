@@ -1,0 +1,126 @@
+# OpenShift-specific deployment — uses Route instead of LoadBalancer,
+# references the SCC via service account annotation
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-s3-bucket-operator
+  annotations:
+    openshift.io/description: "k8s-s3-bucket-operator — COSI driver for MinIO"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-s3-bucket-operator
+  namespace: k8s-s3-bucket-operator
+  annotations:
+    # Links this service account to the SCC defined in scc.yaml
+    openshift.io/scc: k8s-s3-bucket-operator-scc
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-s3-bucket-operator-role
+rules:
+  - apiGroups: ["objectstorage.k8s.io"]
+    resources: ["buckets", "bucketaccesses"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-s3-bucket-operator-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-s3-bucket-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: k8s-s3-bucket-operator
+    namespace: k8s-s3-bucket-operator
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: k8s-s3-bucket-operator
+type: Opaque
+stringData:
+  MINIO_ENDPOINT: "minio.minio-ns.svc.cluster.local:9000"
+  MINIO_ACCESS_KEY: "minioadmin"
+  MINIO_SECRET_KEY: "minioadmin"
+  MINIO_USE_SSL: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-s3-bucket-operator
+  namespace: k8s-s3-bucket-operator
+  labels:
+    app: k8s-s3-bucket-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-s3-bucket-operator
+  template:
+    metadata:
+      labels:
+        app: k8s-s3-bucket-operator
+    spec:
+      serviceAccountName: k8s-s3-bucket-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: ghcr.io/DevangRadadiya/k8s-s3-bucket-operator:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          env:
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ENDPOINT
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_USE_SSL
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_USE_SSL
+          volumeMounts:
+            - name: cosi-socket
+              mountPath: /var/lib/cosi
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: cosi-socket
+          emptyDir: {}

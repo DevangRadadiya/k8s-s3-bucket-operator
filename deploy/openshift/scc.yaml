@@ -1,0 +1,46 @@
+# OpenShift Security Context Constraint for k8s-s3-bucket-operator
+# Allows the operator to run as a specific non-root UID (65532)
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: k8s-s3-bucket-operator-scc
+  annotations:
+    kubernetes.io/description: "SCC for k8s-s3-bucket-operator — non-root, read-only filesystem"
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: false
+allowPrivilegedContainer: false
+allowedCapabilities: []
+defaultAddCapabilities: []
+requiredDropCapabilities:
+  - ALL
+fsGroup:
+  type: MustRunAs
+  ranges:
+    - min: 65532
+      max: 65532
+readOnlyRootFilesystem: true
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 65532
+  uidRangeMax: 65532
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - runtime/default
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+    - min: 65532
+      max: 65532
+users:
+  - system:serviceaccount:k8s-s3-bucket-operator:k8s-s3-bucket-operator
+groups: []
+volumes:
+  - emptyDir
+  - projected
+  - secret
+  - configMap
