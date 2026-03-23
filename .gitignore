@@ -20,3 +20,5 @@ go.work.sum
 .DS_Store
 .gemini/
 doc-internal/
+local-doc/*
+!local-doc/.gitkeep
