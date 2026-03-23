@@ -14,6 +14,7 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 [![OpenShift Ready](https://img.shields.io/badge/OpenShift-Ready-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![Publish Docker image](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/docker-publish.yml)
 [![Publish Helm chart](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/helm-publish.yml/badge.svg)](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/helm-publish.yml)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/k8s-s3-bucket-operator)](https://artifacthub.io/packages/search?repo=k8s-s3-bucket-operator)
 
 ## Support 💬
 

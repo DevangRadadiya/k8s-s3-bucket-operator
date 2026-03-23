@@ -37,6 +37,16 @@ helm install k8s-s3-bucket-operator oci://ghcr.io/devangradadiya/helm-charts/k8s
 
 After registration, Artifact Hub **rescans** periodically; new chart versions appear after the next successful `helm push` and scan.
 
+## README badge (shields.io)
+
+If you use the [Artifact Hub repository badge](https://artifacthub.io/docs/topics/repositories/badges/), the path segment is your **Artifact Hub repository name** (the slug you chose under *Control panel → Repositories*), e.g.:
+
+```markdown
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/k8s-s3-bucket-operator)](https://artifacthub.io/packages/search?repo=k8s-s3-bucket-operator)
+```
+
+If your repository **Name** in Artifact Hub is different (e.g. `devangradadiya-helm-charts`), replace `k8s-s3-bucket-operator` in both URLs with that slug.
+
 ## Maintainer hygiene (same as popular charts)
 
 - Bump **`version`** in `Chart.yaml` when chart behavior changes.
