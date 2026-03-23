@@ -49,6 +49,19 @@ git push origin vX.Y.Z
 
 - [ ] Create the GitHub Release for that tag with release notes.
 
+### Install snippet for release notes (pin to tag)
+
+Paste something like this into the release description so users install **this** version, not `main`:
+
+```text
+REPO_URL="https://raw.githubusercontent.com/DevangRadadiya/k8s-s3-bucket-operator/vX.Y.Z"
+kubectl apply -f "${REPO_URL}/deploy/objectstorage.k8s.io_bucketclasses.yaml"
+kubectl apply -f "${REPO_URL}/deploy/objectstorage.k8s.io_bucketclaims.yaml"
+kubectl apply -f "${REPO_URL}/deploy/operator.yaml"
+```
+
+Replace `vX.Y.Z` with the actual tag. Remind users to set `minio-credentials` in `k8s-s3-bucket-operator`.
+
 ## 4) Post-release verification
 
 - [ ] Confirm workflow succeeded and images exist in GHCR.

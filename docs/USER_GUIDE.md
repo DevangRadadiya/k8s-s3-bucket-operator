@@ -2,7 +2,7 @@
 
 This guide describes how to install the operator, configure **BucketClass** and **BucketClaim**, and use the **enterprise-style** fields (quotas, lifecycle, object lock settings, IAM access type, replication target, deletion policy).
 
-For a minimal install path, see the [README](../README.md) **Quick Start**.
+For a minimal install path, see the [README](../README.md) **Quick start**. For quick Q&A, see [`FAQ.md`](FAQ.md).
 
 ---
 
@@ -52,6 +52,12 @@ Or use Make:
 
 ```bash
 make deploy
+```
+
+Or apply everything in one step with Kustomize (from a clone):
+
+```bash
+kubectl apply -k deploy/
 ```
 
 **Important:** Edit the `minio-credentials` Secret in `deploy/operator.yaml` (or patch after apply) so `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY` match your MinIO deployment.

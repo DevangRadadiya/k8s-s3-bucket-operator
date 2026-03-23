@@ -1,0 +1,9 @@
+# From repo root: kubectl apply -k deploy/
+# Applies CRDs + operator (same as three separate kubectl apply -f ... commands).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - objectstorage.k8s.io_bucketclasses.yaml
+  - objectstorage.k8s.io_bucketclaims.yaml
+  - operator.yaml

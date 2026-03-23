@@ -21,4 +21,3 @@ go.work.sum
 .gemini/
 doc-internal/
 local-doc/*
-!local-doc/.gitkeep

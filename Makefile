@@ -1,6 +1,6 @@
 IMG ?= ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
 
-.PHONY: all build test lint docker-build docker-push deploy undeploy
+.PHONY: all build test lint docker-build docker-push deploy deploy-kustomize undeploy
 
 all: build
 
@@ -29,6 +29,10 @@ deploy:
 	kubectl apply -f deploy/objectstorage.k8s.io_bucketclasses.yaml
 	kubectl apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
 	kubectl apply -f deploy/operator.yaml
+
+## Same as deploy, via Kustomize (kubectl built-in)
+deploy-kustomize:
+	kubectl apply -k deploy/
 
 ## Remove the operator deployment
 undeploy:

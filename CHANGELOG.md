@@ -12,6 +12,9 @@ when versioned releases are published.
 
 - Community files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates.
 - PR template (`.github/pull_request_template.md`) and release checklist (`docs/RELEASE_CHECKLIST.md`).
+- User docs: `docs/FAQ.md`, `docs/TRY_LOCALLY.md`; Kustomize bundle `deploy/kustomization.yaml` (`kubectl apply -k deploy/`).
+- README improvements: TL;DR, repo/image links, CI badge, support table, secret patch example, happy-path `kubectl` output, OpenShift raw URLs, Kustomize option.
+- Makefile: `make deploy-kustomize` (`kubectl apply -k deploy/`).
 
 ---
 
