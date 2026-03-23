@@ -1,5 +1,199 @@
 # k8s-s3-bucket-operator
 
+Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO first) through `BucketClass` and `BucketClaim` resources.
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.25%2B-326CE5?logo=kubernetes)](https://kubernetes.io)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev)
+[![OpenShift Ready](https://img.shields.io/badge/OpenShift-Ready-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
+
+## What this operator does
+
+- Reconciles `BucketClaim` objects and creates buckets in MinIO.
+- Generates per-claim credentials and stores them in namespaced Kubernetes Secrets.
+- Applies claim-level controls like quota, lifecycle, access type, and replication target.
+- Enforces class-level settings like deletion policy and object lock at bucket creation.
+
+## Key features
+
+- **Automatic bucket provisioning** from `BucketClaim`
+- **Credential Secret generation** (`<claim-name>-credentials`)
+- **Quota management** (`spec.quota`, e.g. `50Gi`)
+- **Lifecycle rules** (`spec.lifecycleRules`)
+- **Access policy type** (`spec.accessType`: `ReadWrite` / `ReadOnly`)
+- **Replication target config** (`spec.replicationTarget`, advanced)
+- **Deletion policy** (`BucketClass.deletionPolicy`: `Delete` / `Retain`)
+- **Object lock toggle at creation** (`BucketClass.objectLockingEnabled`)
+- **HA deployment support** (2 replicas + leader election)
+- **OpenShift-compatible manifests** under `deploy/openshift/`
+
+## Documentation
+
+| Doc | Location | Purpose |
+|---|---|---|
+| User guide | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Full install + CRD behavior + troubleshooting |
+| Release checklist | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Tag/release process and verification |
+| Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev workflow and PR guidelines |
+| Changelog | [`CHANGELOG.md`](CHANGELOG.md) | User-visible project changes |
+| Security policy | [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting process |
+| Code of conduct | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant 3.0 |
+
+## Quick start
+
+### Prerequisites
+
+- Kubernetes 1.25+ (or OpenShift 4.12+)
+- A reachable MinIO endpoint
+- `kubectl` (or `oc`)
+
+### 1) Deploy CRDs and operator
+
+From repo root:
+
+```bash
+make deploy
+```
+
+Equivalent raw apply:
+
+```bash
+kubectl apply -f deploy/objectstorage.k8s.io_bucketclasses.yaml
+kubectl apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
+kubectl apply -f deploy/operator.yaml
+```
+
+Before deploying, set valid MinIO credentials in `deploy/operator.yaml` (`Secret` named `minio-credentials`):
+
+- `MINIO_ENDPOINT`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `MINIO_USE_SSL`
+
+### 2) Create a `BucketClass` (admin)
+
+```yaml
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: minio-standard
+driverName: k8s-s3-bucket-operator
+deletionPolicy: Delete
+objectLockingEnabled: true
+retentionMode: GOVERNANCE
+retentionDays: 30
+parameters:
+  region: "us-east-1"
+```
+
+```bash
+kubectl apply -f config/samples/bucketclass.yaml
+```
+
+### 3) Create a `BucketClaim` (app team)
+
+```yaml
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: my-app-images
+  namespace: my-app
+spec:
+  bucketClassName: minio-standard
+  protocols:
+    - S3
+  quota: "50Gi"
+  accessType: ReadOnly
+  lifecycleRules:
+    - id: ExpireOldBackups
+      status: Enabled
+      prefix: backups/
+      expiration:
+        days: 30
+```
+
+```bash
+kubectl apply -f config/samples/bucketclaim.yaml
+```
+
+### 4) Use generated credentials
+
+The operator creates a Secret named:
+
+```text
+<bucketclaim-name>-credentials
+```
+
+Keys in that Secret:
+
+- `accessKeyID`
+- `accessSecretKey`
+- `bucketName`
+- `endpoint`
+
+## Resource summary
+
+### `BucketClaim` (`spec`)
+
+| Field | Description |
+|---|---|
+| `bucketClassName` | Target `BucketClass` name |
+| `bucketName` | Optional explicit bucket name |
+| `protocols` | Protocol list (typically `S3`) |
+| `quota` | Optional hard quota |
+| `accessType` | `ReadWrite` (default) or `ReadOnly` |
+| `lifecycleRules` | Optional lifecycle policy rules |
+| `replicationTarget` | Optional replication target details |
+
+### `BucketClass` (top-level fields)
+
+| Field | Description |
+|---|---|
+| `driverName` | Must be `k8s-s3-bucket-operator` |
+| `deletionPolicy` | `Delete` or `Retain` on claim delete |
+| `objectLockingEnabled` | Enable object lock at bucket creation |
+| `retentionMode` | `GOVERNANCE` or `COMPLIANCE` (declarative) |
+| `retentionDays` | Retention duration in days (declarative) |
+| `parameters.region` | Region used for bucket creation |
+| `parameters.endpoint` | Optional per-class MinIO endpoint override |
+
+For full semantics and verification commands (`mc quota info`, `mc ilm rule ls`), see [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
+
+## Operations
+
+Useful Make targets:
+
+```bash
+make build
+make test
+make deploy
+make undeploy
+make samples
+make samples-clean
+make deploy-openshift
+```
+
+## OpenShift
+
+OpenShift manifests are available in `deploy/openshift/` and include SCC-friendly settings.
+
+```bash
+oc apply -f deploy/objectstorage.k8s.io_bucketclasses.yaml
+oc apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
+oc apply -f deploy/openshift/scc.yaml
+oc apply -f deploy/openshift/operator.yaml
+```
+
+## Current backend support
+
+- MinIO: supported
+- AWS S3: planned
+- Ceph RGW: planned
+
+## License
+
+Apache License 2.0. See [`LICENSE`](LICENSE).
+# k8s-s3-bucket-operator
+
 **Kubernetes-native S3 bucket provisioning and access management.**
 Automatically create and manage S3-compatible buckets (MinIO, AWS S3, Ceph) directly from Kubernetes — no manual IAM setup, no external scripts.
 
@@ -21,8 +215,9 @@ Automatically create and manage S3-compatible buckets (MinIO, AWS S3, Ceph) dire
 | **Security** | [`SECURITY.md`](SECURITY.md) | How to report vulnerabilities (private advisories) |
 | **Code of conduct** | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant |
 | **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build, test, PR workflow |
+| **Release checklist** | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Step-by-step release/tag process and post-release verification |
 
-**Where things live:** **Product docs** stay under **`docs/`**. **Community / GitHub conventions** (`CHANGELOG`, `SECURITY`, `CODE_OF_CONDUCT`) stay at the **repo root** so GitHub and tooling pick them up automatically. **Issue templates** live in **`.github/ISSUE_TEMPLATE/`**.
+**Where things live:** **Product docs** stay under **`docs/`**. **Community / GitHub conventions** (`CHANGELOG`, `SECURITY`, `CODE_OF_CONDUCT`) stay at the **repo root** so GitHub and tooling pick them up automatically. **Issue templates** and the **PR template** live under **`.github/`**.
 
 **README vs wiki:** The user guide in **`docs/`** is versioned with the code. You can optionally mirror into [GitHub Wiki](https://docs.github.com/en/communities/documenting-your-project-with-wikis/about-wikis); treat **`docs/` as the source of truth**.
 

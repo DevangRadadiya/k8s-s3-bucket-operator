@@ -11,6 +11,7 @@ when versioned releases are published.
 ### Added
 
 - Community files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates.
+- PR template (`.github/pull_request_template.md`) and release checklist (`docs/RELEASE_CHECKLIST.md`).
 
 ---
 
