@@ -19,3 +19,4 @@ go.work.sum
 # Local system
 .DS_Store
 .gemini/
+doc-internal/

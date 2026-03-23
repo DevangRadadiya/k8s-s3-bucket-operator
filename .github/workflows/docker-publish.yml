@@ -12,12 +12,22 @@ jobs:
     name: Push Docker image to GitHub Packages
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -ldflags="-w -s" -o bin/manager-linux-amd64 ./cmd/main.go
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -37,10 +47,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # Generates tags:
-          #   - ghcr.io/devangradadiya/k8s-s3-bucket-operator:main   (on push to main)
-          #   - ghcr.io/devangradadiya/k8s-s3-bucket-operator:v1.2.3 (on release v1.2.3)
-          #   - ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest (on release)
+          # Tags:
+          #   main  → :main  (dev builds)
+          #   v1.2.3 release → :v1.2.3, :1.2, :latest
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -54,3 +63,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Upload binary to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/manager-linux-amd64
