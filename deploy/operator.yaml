@@ -76,7 +76,7 @@ spec:
       containers:
         - name: operator
           image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
