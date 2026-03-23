@@ -8,6 +8,7 @@ Use this checklist when cutting a tagged release (for example `v0.2.0`).
 - [ ] Review `CHANGELOG.md` and move important items from `Unreleased` into a new dated section:
   - `## [vX.Y.Z] - YYYY-MM-DD`
 - [ ] Verify docs are current (`README.md`, `docs/USER_GUIDE.md`, samples).
+- [ ] If CRD YAML under `deploy/` changed, sync `charts/k8s-s3-bucket-operator/crds/` and bump **chart** `version` in `charts/k8s-s3-bucket-operator/Chart.yaml` (and `artifacthub-pkg.yml` `version` if present).
 
 ## 2) Validate build and tests
 

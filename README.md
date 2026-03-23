@@ -13,6 +13,7 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 [![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev)
 [![OpenShift Ready](https://img.shields.io/badge/OpenShift-Ready-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![Publish Docker image](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/docker-publish.yml)
+[![Publish Helm chart](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/helm-publish.yml/badge.svg)](https://github.com/DevangRadadiya/k8s-s3-bucket-operator/actions/workflows/helm-publish.yml)
 
 ## Support 💬
 
@@ -41,6 +42,7 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 - **Object lock toggle at creation** (`BucketClass.objectLockingEnabled`)
 - **HA deployment support** (2 replicas + leader election)
 - **OpenShift-compatible manifests** under `deploy/openshift/`
+- **Helm chart** — [`charts/k8s-s3-bucket-operator`](charts/k8s-s3-bucket-operator) (published to **GHCR OCI** by CI)
 
 ## Documentation 📚
 
@@ -54,6 +56,8 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 | Changelog | [`CHANGELOG.md`](CHANGELOG.md) | User-visible project changes |
 | Security policy | [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting process |
 | Code of conduct | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant 3.0 |
+| Helm charts | [`charts/README.md`](charts/README.md) | OCI install, values, CRD notes |
+| Artifact Hub | [`docs/ARTIFACT_HUB.md`](docs/ARTIFACT_HUB.md) | Register & scan the OCI repo |
 
 ## Quick start (for users) ⚡
 
@@ -82,14 +86,23 @@ cd k8s-s3-bucket-operator
 kubectl apply -k deploy/
 ```
 
-Then set valid MinIO credentials in the `minio-credentials` Secret (namespace: `k8s-s3-bucket-operator`):
+**Alternative (Helm 3.8+, OCI):** after CI has published the chart (see badge above):
 
-- `MINIO_ENDPOINT`
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
-- `MINIO_USE_SSL`
+```bash
+helm install k8s-s3-bucket-operator oci://ghcr.io/devangradadiya/helm-charts/k8s-s3-bucket-operator \
+  --version 0.1.0 \
+  --namespace k8s-s3-bucket-operator \
+  --create-namespace
+```
 
-Example patch (replace values):
+Override MinIO settings with `--set` / `-f values.yaml`; for production use `minio.existingSecret`. Details: [`charts/README.md`](charts/README.md).
+
+**MinIO credentials**
+
+- **kubectl / Kustomize:** set keys on the `minio-credentials` Secret in `k8s-s3-bucket-operator` (`MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_USE_SSL`), then restart the Deployment.
+- **Helm:** the chart can create that Secret from `values.yaml` (default placeholders). Replace with real values or `minio.existingSecret` before relying on it in production.
+
+Example (kubectl path — replace values):
 
 ```bash
 kubectl -n k8s-s3-bucket-operator create secret generic minio-credentials \
@@ -100,6 +113,8 @@ kubectl -n k8s-s3-bucket-operator create secret generic minio-credentials \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n k8s-s3-bucket-operator rollout restart deploy/k8s-s3-bucket-operator
 ```
+
+> Helm installs use a Deployment name derived from the release name; use `kubectl get deploy -n k8s-s3-bucket-operator` to find it.
 
 ### 2) Create a `BucketClass` (admin)
 

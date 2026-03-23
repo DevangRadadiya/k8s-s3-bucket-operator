@@ -1,6 +1,6 @@
 IMG ?= ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
 
-.PHONY: all build test lint docker-build docker-push deploy deploy-kustomize undeploy
+.PHONY: all build test lint docker-build docker-push deploy deploy-kustomize helm-lint helm-package undeploy
 
 all: build
 
@@ -33,6 +33,13 @@ deploy:
 ## Same as deploy, via Kustomize (kubectl built-in)
 deploy-kustomize:
 	kubectl apply -k deploy/
+
+## Helm (requires helm CLI)
+helm-lint:
+	helm lint charts/k8s-s3-bucket-operator
+
+helm-package:
+	helm package charts/k8s-s3-bucket-operator --destination /tmp
 
 ## Remove the operator deployment
 undeploy:

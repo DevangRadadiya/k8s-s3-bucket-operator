@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}
+  namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "k8s-s3-bucket-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-s3-bucket-operator.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "k8s-s3-bucket-operator.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: operator
+          image: {{ include "k8s-s3-bucket-operator.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.leaderElection.enabled }}
+          args:
+            - "--leader-elect=true"
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-s3-bucket-operator.minioSecretName" . }}
+                  key: MINIO_ENDPOINT
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-s3-bucket-operator.minioSecretName" . }}
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-s3-bucket-operator.minioSecretName" . }}
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_USE_SSL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-s3-bucket-operator.minioSecretName" . }}
+                  key: MINIO_USE_SSL
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

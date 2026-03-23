@@ -1,0 +1,15 @@
+1. Check the operator is running:
+   kubectl get deploy -n {{ include "k8s-s3-bucket-operator.namespace" . }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. MinIO credentials live in Secret "{{ include "k8s-s3-bucket-operator.minioSecretName" . }}" (namespace {{ include "k8s-s3-bucket-operator.namespace" . }}).
+{{- if and .Values.minio.createSecret (not .Values.minio.existingSecret) }}
+   Replace placeholder keys for production:
+   kubectl create secret generic {{ .Values.minio.secretName }} -n {{ include "k8s-s3-bucket-operator.namespace" . }} \
+     --from-literal=MINIO_ENDPOINT=... --from-literal=MINIO_ACCESS_KEY=... \
+     --from-literal=MINIO_SECRET_KEY=... --from-literal=MINIO_USE_SSL=false \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deploy/{{ include "k8s-s3-bucket-operator.fullname" . }} -n {{ include "k8s-s3-bucket-operator.namespace" . }}
+{{- end }}
+
+3. Create a BucketClass (cluster) and BucketClaim (namespace). See:
+   https://github.com/DevangRadadiya/k8s-s3-bucket-operator/blob/main/docs/USER_GUIDE.md

@@ -1,0 +1,31 @@
+apiVersion: v2
+name: k8s-s3-bucket-operator
+description: Kubernetes operator for provisioning S3-compatible buckets (MinIO) via BucketClass and BucketClaim
+type: application
+icon: https://raw.githubusercontent.com/cncf/artwork/main/projects/kubernetes/icon/color/kubernetes-icon-color.png
+# Chart version — bump when changing templates/values/crds packaging
+version: 0.1.0
+# Default operator image tag when values.image.tag is empty
+appVersion: "latest"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/DevangRadadiya/k8s-s3-bucket-operator
+sources:
+  - https://github.com/DevangRadadiya/k8s-s3-bucket-operator
+maintainers:
+  - name: DevangRadadiya
+keywords:
+  - minio
+  - s3
+  - object-storage
+  - bucket
+  - operator
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/DevangRadadiya/k8s-s3-bucket-operator/blob/main/docs/USER_GUIDE.md
+    - name: Source
+      url: https://github.com/DevangRadadiya/k8s-s3-bucket-operator
+    - name: Packages
+      url: https://github.com/DevangRadadiya/k8s-s3-bucket-operator/pkgs/container/k8s-s3-bucket-operator

@@ -1,0 +1,93 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bucketclaims.objectstorage.k8s.io
+  annotations:
+    api-approved.kubernetes.io: "unapproved, experimental-only"
+spec:
+  group: objectstorage.k8s.io
+  names:
+    kind: BucketClaim
+    listKind: BucketClaimList
+    plural: bucketclaims
+    singular: bucketclaim
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - bucketClassName
+              properties:
+                bucketClassName:
+                  type: string
+                protocols:
+                  type: array
+                  items:
+                    type: string
+                bucketName:
+                  type: string
+                quota:
+                  type: string
+                  pattern: "^[+|-]?[0-9.]+([eE][+|-]?[0-9.]+)?(Ki|Mi|Gi|Ti|Pi|Ei|m|k|M|G|T|P|E)?$"
+                accessType:
+                  type: string
+                  enum: [ReadWrite, ReadOnly]
+                  default: ReadWrite
+                lifecycleRules:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, status, expiration]
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        type: string
+                        enum: [Enabled, Disabled]
+                      prefix:
+                        type: string
+                      expiration:
+                        type: object
+                        required: [days]
+                        properties:
+                          days:
+                            type: integer
+                replicationTarget:
+                  type: object
+                  required: [endpoint, bucketName, accessKey, secretKey]
+                  properties:
+                    endpoint:
+                      type: string
+                    bucketName:
+                      type: string
+                    accessKey:
+                      type: string
+                    secretKey:
+                      type: string
+                    useSSL:
+                      type: boolean
+            status:
+              type: object
+              properties:
+                secretReference:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                endpoint:
+                  type: string
+                bucketName:
+                  type: string
+                phase:
+                  type: string

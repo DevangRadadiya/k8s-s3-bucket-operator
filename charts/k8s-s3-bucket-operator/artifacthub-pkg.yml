@@ -1,0 +1,28 @@
+# Artifact Hub package metadata (Helm OCI)
+# https://artifacthub.io/docs/topics/annotations/helm/
+version: 0.1.0
+name: k8s-s3-bucket-operator
+displayName: k8s-s3-bucket-operator
+createdAt: "2026-03-23T00:00:00Z"
+description: Kubernetes operator for S3-compatible bucket provisioning (MinIO) using BucketClass and BucketClaim.
+logoURL: https://raw.githubusercontent.com/cncf/artwork/main/projects/kubernetes/icon/color/kubernetes-icon-color.svg
+license: Apache-2.0
+homeURL: https://github.com/DevangRadadiya/k8s-s3-bucket-operator
+appVersion: latest
+containersImages:
+  - name: operator
+    image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
+    platforms:
+      - linux/amd64
+keywords:
+  - minio
+  - s3
+  - object-storage
+  - bucket
+links:
+  - name: User guide
+    url: https://github.com/DevangRadadiya/k8s-s3-bucket-operator/blob/main/docs/USER_GUIDE.md
+  - name: Source
+    url: https://github.com/DevangRadadiya/k8s-s3-bucket-operator
+maintainers:
+  - name: DevangRadadiya

@@ -1,0 +1,5 @@
+# Patterns to ignore when packaging.
+# Note: do not use `*.md` + `!README.md` here — some Helm versions then fail to load Chart.yaml.
+.DS_Store
+.git
+.gitignore

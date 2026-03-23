@@ -15,6 +15,8 @@ when versioned releases are published.
 - User docs: `docs/FAQ.md`, `docs/TRY_LOCALLY.md`; Kustomize bundle `deploy/kustomization.yaml` (`kubectl apply -k deploy/`).
 - README improvements: TL;DR, repo/image links, CI badge, support table, secret patch example, happy-path `kubectl` output, OpenShift raw URLs, Kustomize option.
 - Makefile: `make deploy-kustomize` (`kubectl apply -k deploy/`).
+- Helm chart `charts/k8s-s3-bucket-operator` (CRDs + operator); CI workflow `helm-publish.yml` pushes OCI packages to `ghcr.io/<owner>/helm-charts`.
+- Docs: `docs/ARTIFACT_HUB.md`, `charts/README.md`; Makefile `helm-lint` / `helm-package`.
 
 ---
 
