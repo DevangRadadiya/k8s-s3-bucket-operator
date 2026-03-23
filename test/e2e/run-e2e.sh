@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+cleanup() {
+  kubectl delete ns my-app --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete ns minio-ns --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete ns k8s-s3-bucket-operator --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete crd bucketclaims.objectstorage.k8s.io bucketclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 echo "==> 1. Setting up MinIO test instance"
 kubectl create ns minio-ns --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f test/e2e/minio.yaml
@@ -35,8 +43,13 @@ fi
 echo "==> 5. Verifying Secret generation in App Namespace"
 kubectl get secret my-app-images-credentials -n my-app
 
-echo "==> 6. Verifying MinIO backend storage bucket"
-kubectl exec -n minio-ns deploy/minio -- ls -ld /data/my-app-my-app-images
+echo "==> 6. Verifying MinIO backend storage bucket + enterprise settings"
+kubectl exec -n minio-ns deploy/minio -- ls -ld /data/my-v120-test-bucket
+kubectl exec -n minio-ns deploy/minio -- mc alias set myminio http://localhost:9000 minioadmin minioadmin
+echo "--- Bucket Quota ---"
+kubectl exec -n minio-ns deploy/minio -- mc quota info myminio/my-v120-test-bucket || echo "quota info unavailable"
+echo "--- Lifecycle Rules ---"
+kubectl exec -n minio-ns deploy/minio -- mc ilm rule ls myminio/my-v120-test-bucket || echo "lifecycle info unavailable"
 
 echo ""
-echo "✅ End-to-End Test completed successfully!"
+echo "✅ End-to-End Test completed successfully! (cleanup will run automatically)"

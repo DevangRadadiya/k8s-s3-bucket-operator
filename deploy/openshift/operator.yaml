@@ -82,8 +82,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: operator
-          image: ghcr.io/DevangRadadiya/k8s-s3-bucket-operator:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:main
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

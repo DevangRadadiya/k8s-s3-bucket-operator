@@ -26,13 +26,15 @@ docker-push:
 
 ## Install CRDs and deploy the custom operator
 deploy:
-	kubectl apply -f deploy/crd.yaml
+	kubectl apply -f deploy/objectstorage.k8s.io_bucketclasses.yaml
+	kubectl apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
 	kubectl apply -f deploy/operator.yaml
 
 ## Remove the operator deployment
 undeploy:
 	kubectl delete -f deploy/operator.yaml --ignore-not-found
-	kubectl delete -f deploy/crd.yaml --ignore-not-found
+	kubectl delete -f deploy/objectstorage.k8s.io_bucketclaims.yaml --ignore-not-found
+	kubectl delete -f deploy/objectstorage.k8s.io_bucketclasses.yaml --ignore-not-found
 
 ## Apply sample BucketClass and BucketClaim
 samples:
@@ -46,7 +48,8 @@ samples-clean:
 
 ## OpenShift deploy
 deploy-openshift:
-	kubectl apply -f deploy/crd.yaml
+	kubectl apply -f deploy/objectstorage.k8s.io_bucketclasses.yaml
+	kubectl apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
 	kubectl apply -f deploy/openshift/scc.yaml
 	kubectl apply -f deploy/openshift/operator.yaml
 

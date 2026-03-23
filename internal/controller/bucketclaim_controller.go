@@ -3,9 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
+	"github.com/minio/minio-go/v7/pkg/lifecycle"
+	"github.com/minio/minio-go/v7/pkg/replication"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -90,22 +93,76 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// 1. Create Bucket
-	if err := r.Minio.CreateBucket(ctx, bucketName, region); err != nil {
+	if err := r.Minio.CreateBucket(ctx, bucketName, region, class.ObjectLockingEnabled); err != nil {
 		log.Error(err, "Failed to create bucket in MinIO")
 		return ctrl.Result{}, err
 	}
 
-	// 2. Grant Access
+	// 2. Configure advanced bucket settings
+	if claim.Spec.Quota != nil {
+		quotaBytes, ok := claim.Spec.Quota.AsInt64()
+		if ok && quotaBytes > 0 {
+			if err := r.Minio.SetBucketQuota(ctx, bucketName, quotaBytes); err != nil {
+				log.Error(err, "Failed to set bucket quota")
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	if len(claim.Spec.LifecycleRules) > 0 {
+		lc := &lifecycle.Configuration{}
+		for _, rule := range claim.Spec.LifecycleRules {
+			lc.Rules = append(lc.Rules, lifecycle.Rule{
+				ID:     rule.ID,
+				Status: rule.Status,
+				RuleFilter: lifecycle.Filter{
+					Prefix: rule.Prefix,
+				},
+				Expiration: lifecycle.Expiration{
+					Days: lifecycle.ExpirationDays(rule.Expiration.Days),
+				},
+			})
+		}
+		if err := r.Minio.SetBucketLifecycle(ctx, bucketName, lc); err != nil {
+			log.Error(err, "Failed to set bucket lifecycle")
+			return ctrl.Result{}, err
+		}
+	}
+
+	if claim.Spec.ReplicationTarget != nil {
+		repCfg := replication.Config{
+			Rules: []replication.Rule{
+				{
+					Status: "Enabled",
+					Destination: replication.Destination{
+						Bucket: "arn:aws:s3:::" + claim.Spec.ReplicationTarget.BucketName,
+					},
+				},
+			},
+		}
+		if err := r.Minio.SetBucketReplication(ctx, bucketName, repCfg); err != nil {
+			log.Error(err, "Failed to set bucket replication")
+		}
+	}
+
+	// 3. Grant Access
 	// Account ID is just namespace/name for isolating policies
 	accountID := fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
-	creds, err := r.Minio.GrantAccess(ctx, bucketName, accountID)
+	secretName := fmt.Sprintf("%s-credentials", claim.Name)
+	existingSecret := &corev1.Secret{}
+	existingAccessKey := ""
+	existingSecretKey := ""
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: claim.Namespace}, existingSecret); err == nil {
+		existingAccessKey = strings.TrimSpace(string(existingSecret.Data["accessKeyID"]))
+		existingSecretKey = strings.TrimSpace(string(existingSecret.Data["accessSecretKey"]))
+	}
+	creds, err := r.Minio.GrantAccess(ctx, bucketName, accountID, string(claim.Spec.AccessType), existingAccessKey, existingSecretKey)
 	if err != nil {
 		log.Error(err, "Failed to grant access")
 		return ctrl.Result{}, err
 	}
 
 	// 3. Create Secret
-	secretName := fmt.Sprintf("%s-credentials", claim.Name)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -173,9 +230,16 @@ func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *
 	}
 
 	accountID := fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
+	accessKey := ""
+	if claim.Status.SecretReference != nil {
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, types.NamespacedName{Name: claim.Status.SecretReference.Name, Namespace: claim.Status.SecretReference.Namespace}, secret); err == nil {
+			accessKey = strings.TrimSpace(string(secret.Data["accessKeyID"]))
+		}
+	}
 
 	// Always revoke access to delete the minio policy/user
-	if err := r.Minio.RevokeAccess(ctx, bucketName, accountID); err != nil {
+	if err := r.Minio.RevokeAccess(ctx, bucketName, accountID, accessKey); err != nil {
 		log.Error(err, "Failed to revoke access during finalizer")
 		// Continue anyway to try to clean up bucket if Delete policy
 	}

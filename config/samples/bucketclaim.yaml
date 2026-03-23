@@ -10,5 +10,20 @@ metadata:
   namespace: my-app
 spec:
   bucketClassName: minio-standard
+  bucketName: my-v120-test-bucket
   protocols:
     - S3
+  quota: "50Gi"
+  accessType: ReadOnly
+  lifecycleRules:
+    - id: ExpireOldBackups
+      status: Enabled
+      prefix: backups/
+      expiration:
+        days: 30
+  replicationTarget:
+    endpoint: minio.minio-ns.svc.cluster.local:9000
+    bucketName: my-v120-test-bucket-replica
+    accessKey: minioadmin
+    secretKey: minioadmin
+    useSSL: false

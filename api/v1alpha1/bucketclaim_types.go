@@ -2,8 +2,51 @@ package v1alpha1
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// AccessType defines the type of generated bucket access.
+type AccessType string
+
+const (
+	AccessTypeReadWrite AccessType = "ReadWrite"
+	AccessTypeReadOnly  AccessType = "ReadOnly"
+)
+
+// LifecycleExpiration defines expiration settings for a lifecycle rule.
+type LifecycleExpiration struct {
+	// Days is the object expiration period in days.
+	Days int `json:"days"`
+}
+
+// LifecycleRule defines one lifecycle management rule.
+type LifecycleRule struct {
+	// ID is the unique identifier for the rule.
+	ID string `json:"id"`
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	Status string `json:"status"`
+	// Prefix limits the rule to object keys with this prefix.
+	// +optional
+	Prefix string `json:"prefix,omitempty"`
+	// Expiration defines the expiration policy for matched objects.
+	Expiration LifecycleExpiration `json:"expiration"`
+}
+
+// ReplicationTarget defines the target MinIO deployment for replication.
+type ReplicationTarget struct {
+	// Endpoint is the target MinIO API endpoint (host:port).
+	Endpoint string `json:"endpoint"`
+	// BucketName is the destination bucket name in the target deployment.
+	BucketName string `json:"bucketName"`
+	// AccessKey is the admin/service access key for the target deployment.
+	AccessKey string `json:"accessKey"`
+	// SecretKey is the admin/service secret key for the target deployment.
+	SecretKey string `json:"secretKey"`
+	// UseSSL controls whether the target endpoint uses TLS.
+	// +optional
+	UseSSL bool `json:"useSSL,omitempty"`
+}
 
 // BucketClaimSpec defines the desired state of BucketClaim
 type BucketClaimSpec struct {
@@ -18,6 +61,24 @@ type BucketClaimSpec struct {
 	// BucketName allows explicitly naming the bucket. If empty, the operator generates one.
 	// +optional
 	BucketName string `json:"bucketName,omitempty"`
+
+	// Quota sets a hard storage quota for the bucket.
+	// +optional
+	Quota *resource.Quantity `json:"quota,omitempty"`
+
+	// AccessType controls generated IAM access.
+	// +kubebuilder:validation:Enum=ReadWrite;ReadOnly
+	// +kubebuilder:default=ReadWrite
+	// +optional
+	AccessType AccessType `json:"accessType,omitempty"`
+
+	// LifecycleRules defines object lifecycle management rules.
+	// +optional
+	LifecycleRules []LifecycleRule `json:"lifecycleRules,omitempty"`
+
+	// ReplicationTarget enables configuring replication to another MinIO deployment.
+	// +optional
+	ReplicationTarget *ReplicationTarget `json:"replicationTarget,omitempty"`
 }
 
 // BucketClaimStatus defines the observed state of BucketClaim

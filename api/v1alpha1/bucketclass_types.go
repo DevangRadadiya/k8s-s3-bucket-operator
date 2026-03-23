@@ -12,6 +12,14 @@ const (
 	DeletionPolicyRetain DeletionPolicy = "Retain"
 )
 
+// RetentionMode defines default object lock retention mode.
+type RetentionMode string
+
+const (
+	RetentionModeGovernance RetentionMode = "GOVERNANCE"
+	RetentionModeCompliance RetentionMode = "COMPLIANCE"
+)
+
 // BucketClass defines the parameters for a class of buckets.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
@@ -31,6 +39,20 @@ type BucketClass struct {
 	// +kubebuilder:validation:Enum=Delete;Retain
 	// +kubebuilder:default=Retain
 	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// ObjectLockingEnabled enables object lock during bucket creation.
+	// +kubebuilder:default=false
+	// +optional
+	ObjectLockingEnabled bool `json:"objectLockingEnabled,omitempty"`
+
+	// RetentionMode is the default object lock retention mode for new objects.
+	// +kubebuilder:validation:Enum=GOVERNANCE;COMPLIANCE
+	// +optional
+	RetentionMode RetentionMode `json:"retentionMode,omitempty"`
+
+	// RetentionDays is the default object lock retention duration in days.
+	// +optional
+	RetentionDays int `json:"retentionDays,omitempty"`
 
 	// Parameters is an opaque map for the driver.
 	// +optional

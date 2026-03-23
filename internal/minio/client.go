@@ -2,15 +2,18 @@ package minio
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/minio/madmin-go/v3"
 	miniogo "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/lifecycle"
+	"github.com/minio/minio-go/v7/pkg/replication"
 	"k8s.io/klog/v2"
 )
 
@@ -72,7 +75,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 // CreateBucket creates a bucket with the given name and region.
 // Returns nil if the bucket already exists.
-func (c *Client) CreateBucket(ctx context.Context, bucketName, region string) error {
+func (c *Client) CreateBucket(ctx context.Context, bucketName, region string, objectLocking bool) error {
 	exists, err := c.s3.BucketExists(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("checking bucket existence: %w", err)
@@ -82,13 +85,37 @@ func (c *Client) CreateBucket(ctx context.Context, bucketName, region string) er
 		return nil
 	}
 
-	opts := miniogo.MakeBucketOptions{Region: region}
+	opts := miniogo.MakeBucketOptions{
+		Region:        region,
+		ObjectLocking: objectLocking,
+	}
 	if err := c.s3.MakeBucket(ctx, bucketName, opts); err != nil {
 		return fmt.Errorf("creating bucket %q: %w", bucketName, err)
 	}
 
-	klog.Infof("Created bucket %q in region %q", bucketName, region)
+	klog.Infof("Created bucket %q in region %q (objectLock=%v)", bucketName, region, objectLocking)
 	return nil
+}
+
+// SetBucketQuota sets a hard quota on the bucket.
+func (c *Client) SetBucketQuota(ctx context.Context, bucketName string, quotaBytes int64) error {
+	if quotaBytes <= 0 {
+		return nil
+	}
+	return c.admin.SetBucketQuota(ctx, bucketName, &madmin.BucketQuota{
+		Quota: uint64(quotaBytes),
+		Type:  madmin.HardQuota,
+	})
+}
+
+// SetBucketLifecycle configures lifecycle rules on a bucket.
+func (c *Client) SetBucketLifecycle(ctx context.Context, bucketName string, cfg *lifecycle.Configuration) error {
+	return c.s3.SetBucketLifecycle(ctx, bucketName, cfg)
+}
+
+// SetBucketReplication configures replication on a bucket.
+func (c *Client) SetBucketReplication(ctx context.Context, bucketName string, cfg replication.Config) error {
+	return c.s3.SetBucketReplication(ctx, bucketName, cfg)
 }
 
 // DeleteBucket removes a bucket. Does not fail if the bucket does not exist.
@@ -110,15 +137,22 @@ func (c *Client) DeleteBucket(ctx context.Context, bucketName string) error {
 	return nil
 }
 
-// GrantAccess creates a MinIO user scoped to the given bucket and returns credentials.
+// GrantAccess creates or updates a MinIO user scoped to the given bucket and returns credentials.
 // The returned map contains: accessKeyID, accessSecretKey, bucketName, endpoint.
-func (c *Client) GrantAccess(ctx context.Context, bucketName, accountID string) (map[string]string, error) {
-	accessKey, secretKey, err := generateCredentials()
-	if err != nil {
-		return nil, fmt.Errorf("generating credentials: %w", err)
+func (c *Client) GrantAccess(
+	ctx context.Context,
+	bucketName, accountID, accessType, existingAccessKey, existingSecretKey string,
+) (map[string]string, error) {
+	accessKey := existingAccessKey
+	secretKey := existingSecretKey
+	if accessKey == "" {
+		accessKey = accessKeyForAccount(accountID)
+	}
+	if secretKey == "" {
+		secretKey = secretForAccount(accountID)
 	}
 
-	// Create the user
+	// Create or update the user credentials
 	if err := c.admin.AddUser(ctx, accessKey, secretKey); err != nil {
 		return nil, fmt.Errorf("creating MinIO user %q: %w", accessKey, err)
 	}
@@ -126,6 +160,9 @@ func (c *Client) GrantAccess(ctx context.Context, bucketName, accountID string) 
 	// Create a bucket-scoped policy
 	policyName := fmt.Sprintf("cosi-%s-%s", bucketName, accountID)
 	policy := bucketPolicy(bucketName)
+	if strings.EqualFold(accessType, "ReadOnly") {
+		policy = bucketPolicyReadOnly(bucketName)
+	}
 
 	policyBytes, err := json.Marshal(policy)
 	if err != nil {
@@ -152,12 +189,14 @@ func (c *Client) GrantAccess(ctx context.Context, bucketName, accountID string) 
 }
 
 // RevokeAccess removes the MinIO user and associated policy for the given account.
-func (c *Client) RevokeAccess(ctx context.Context, bucketName, accountID string) error {
+func (c *Client) RevokeAccess(ctx context.Context, bucketName, accountID, accessKey string) error {
 	policyName := fmt.Sprintf("cosi-%s-%s", bucketName, accountID)
 
-	// Remove user (accountID is used as the accessKey in this operator)
-	if err := c.admin.RemoveUser(ctx, accountID); err != nil {
-		klog.Warningf("Could not remove user %q: %v (may already be deleted)", accountID, err)
+	if accessKey == "" {
+		accessKey = accessKeyForAccount(accountID)
+	}
+	if err := c.admin.RemoveUser(ctx, accessKey); err != nil {
+		klog.Warningf("Could not remove user %q: %v (may already be deleted)", accessKey, err)
 	}
 
 	// Remove policy
@@ -169,21 +208,22 @@ func (c *Client) RevokeAccess(ctx context.Context, bucketName, accountID string)
 	return nil
 }
 
-// generateCredentials creates a random access key and secret key.
-func generateCredentials() (accessKey, secretKey string, err error) {
-	akBytes := make([]byte, 10)
-	skBytes := make([]byte, 20)
+var nonAlnum = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
-	if _, err = rand.Read(akBytes); err != nil {
-		return
+func accessKeyForAccount(accountID string) string {
+	normalized := strings.ToLower(nonAlnum.ReplaceAllString(accountID, ""))
+	if len(normalized) > 12 {
+		normalized = normalized[:12]
 	}
-	if _, err = rand.Read(skBytes); err != nil {
-		return
+	if normalized == "" {
+		normalized = "user"
 	}
+	return "cosi" + normalized
+}
 
-	accessKey = "cosi-" + hex.EncodeToString(akBytes)
-	secretKey = hex.EncodeToString(skBytes)
-	return
+func secretForAccount(accountID string) string {
+	sum := sha1.Sum([]byte(accountID))
+	return fmt.Sprintf("%x%x", sum[:], sum[:4])
 }
 
 // bucketPolicy returns an IAM policy document scoped to a single bucket.
@@ -197,6 +237,27 @@ func bucketPolicy(bucketName string) map[string]interface{} {
 					"s3:GetObject",
 					"s3:PutObject",
 					"s3:DeleteObject",
+					"s3:ListBucket",
+					"s3:GetBucketLocation",
+				},
+				"Resource": []string{
+					fmt.Sprintf("arn:aws:s3:::%s", bucketName),
+					fmt.Sprintf("arn:aws:s3:::%s/*", bucketName),
+				},
+			},
+		},
+	}
+}
+
+// bucketPolicyReadOnly returns an IAM policy document scoped to a single bucket.
+func bucketPolicyReadOnly(bucketName string) map[string]interface{} {
+	return map[string]interface{}{
+		"Version": "2012-10-17",
+		"Statement": []map[string]interface{}{
+			{
+				"Effect": "Allow",
+				"Action": []string{
+					"s3:GetObject",
 					"s3:ListBucket",
 					"s3:GetBucketLocation",
 				},

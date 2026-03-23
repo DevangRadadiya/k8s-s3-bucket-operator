@@ -77,7 +77,7 @@ spec:
         - name: operator
           args:
             - "--leader-elect=true"
-          image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
+          image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:main
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false

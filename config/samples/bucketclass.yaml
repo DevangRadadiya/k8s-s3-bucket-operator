@@ -6,6 +6,9 @@ metadata:
   name: minio-standard
 driverName: k8s-s3-bucket-operator
 deletionPolicy: Delete
+objectLockingEnabled: true
+retentionMode: GOVERNANCE
+retentionDays: 30
 parameters:
   region: "us-east-1"
   # endpoint is read from the operator's MINIO_ENDPOINT env var

@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+cleanup() {
+  kubectl delete ns my-app --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete ns minio-ns --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete ns k8s-s3-bucket-operator --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete crd bucketclaims.objectstorage.k8s.io bucketclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 echo "==> 1. Setting up MinIO test instance"
 # On strict OpenShift clusters, you may need to grant anyuid to the minio-ns default sa for the MinIO image
 kubectl create ns minio-ns --dry-run=client -o yaml | kubectl apply -f -
@@ -37,7 +45,7 @@ echo "==> 5. Verifying Secret generation in App Namespace"
 kubectl get secret my-app-images-credentials -n my-app
 
 echo "==> 6. Verifying MinIO backend storage bucket"
-kubectl exec -n minio-ns deploy/minio -- ls -ld /data/my-app-my-app-images
+kubectl exec -n minio-ns deploy/minio -- ls -ld /data/my-v120-test-bucket
 
 echo ""
-echo "✅ OpenShift End-to-End Test completed successfully!"
+echo "✅ OpenShift End-to-End Test completed successfully! (cleanup will run automatically)"
