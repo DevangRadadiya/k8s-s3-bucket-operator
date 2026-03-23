@@ -21,7 +21,7 @@ Thanks for your interest in contributing. This guide covers everything you need 
 
 | Tool | Version | Purpose |
 |---|---|---|
-| Go | 1.21+ | Build the operator |
+| Go | 1.25+ | Build the operator |
 | Docker | 20.10+ | Build container image |
 | kubectl | 1.25+ | Interact with cluster |
 | kind or minikube | latest | Local Kubernetes cluster |

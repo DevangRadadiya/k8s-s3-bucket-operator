@@ -5,9 +5,26 @@ Automatically create and manage S3-compatible buckets (MinIO, AWS S3, Ceph) dire
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.25%2B-326CE5?logo=kubernetes)](https://kubernetes.io)
-[![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev)
 [![OpenShift Ready](https://img.shields.io/badge/OpenShift-Ready-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![COSI](https://img.shields.io/badge/COSI-based-orange)](https://container-object-storage-interface.github.io)
+
+---
+
+## Documentation
+
+| Doc | Location | Description |
+|-----|----------|-------------|
+| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Install, CRD fields, enterprise features, `mc` checks, troubleshooting |
+| **Samples** | [`config/samples/`](config/samples/) | `bucketclass.yaml`, `bucketclaim.yaml` with optional enterprise fields |
+| **Changelog** | [`CHANGELOG.md`](CHANGELOG.md) | Release notes (Keep a Changelog); update when you tag releases |
+| **Security** | [`SECURITY.md`](SECURITY.md) | How to report vulnerabilities (private advisories) |
+| **Code of conduct** | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant |
+| **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build, test, PR workflow |
+
+**Where things live:** **Product docs** stay under **`docs/`**. **Community / GitHub conventions** (`CHANGELOG`, `SECURITY`, `CODE_OF_CONDUCT`) stay at the **repo root** so GitHub and tooling pick them up automatically. **Issue templates** live in **`.github/ISSUE_TEMPLATE/`**.
+
+**README vs wiki:** The user guide in **`docs/`** is versioned with the code. You can optionally mirror into [GitHub Wiki](https://docs.github.com/en/communities/documenting-your-project-with-wikis/about-wikis); treat **`docs/` as the source of truth**.
 
 ---
 
@@ -66,10 +83,14 @@ There are several ways to provision S3 buckets from Kubernetes. Here is how we c
 - **Automatic bucket provisioning** — declare a `BucketClaim`, get a bucket
 - **Secure credential management** — credentials stored in Kubernetes Secrets, never logged
 - **Namespace isolation** — each namespace gets its own scoped access (multi-tenancy)
-- **Bucket lifecycle policies** — expiry, archival, cleanup rules via CRD
+- **Bucket quotas** — optional hard quota per claim (`spec.quota`, e.g. `50Gi`)
+- **Lifecycle rules** — prefix + expiration days via `spec.lifecycleRules`
+- **Object lock (bucket creation)** — optional on `BucketClass` (`objectLockingEnabled`, retention fields)
+- **IAM-style access** — `ReadWrite` or `ReadOnly` per claim (`spec.accessType`)
+- **Replication target** — optional rule toward another MinIO endpoint (`spec.replicationTarget`; advanced)
+- **Deletion policy** — `Delete` or `Retain` bucket on claim deletion (`BucketClass.deletionPolicy`)
 - **OpenShift-ready** — runs non-root, SCC-compatible, uses Routes
-- **Multi-backend** — MinIO, AWS S3, Ceph RGW (any S3-compatible store)
-- **Credential rotation** — rotate access keys without app downtime
+- **Multi-backend** — MinIO today; AWS S3 / Ceph RGW planned
 
 ---
 
@@ -132,19 +153,27 @@ There are several ways to provision S3 buckets from Kubernetes. Here is how we c
 - MinIO instance (in-cluster or external)
 - kubectl / oc
 
-### 1. Install the COSI controller
+### 1. Install CRDs and operator
+
+From a clone:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/DevangRadadiya/k8s-s3-bucket-operator/main/deploy/cosi-controller.yaml
+make deploy
 ```
 
-### 2. Install the operator
+Or with raw URLs (same as `make deploy`):
 
 ```bash
+kubectl apply -f https://raw.githubusercontent.com/DevangRadadiya/k8s-s3-bucket-operator/main/deploy/objectstorage.k8s.io_bucketclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/DevangRadadiya/k8s-s3-bucket-operator/main/deploy/objectstorage.k8s.io_bucketclaims.yaml
 kubectl apply -f https://raw.githubusercontent.com/DevangRadadiya/k8s-s3-bucket-operator/main/deploy/operator.yaml
 ```
 
-### 3. Create a BucketClass (admin, once per backend)
+Edit the **`minio-credentials`** Secret in `deploy/operator.yaml` (or patch after apply) so `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY` point at your MinIO.
+
+> **Note:** This project is COSI-aligned in spirit; a separate COSI controller manifest is not required for the current `BucketClaim` / `BucketClass` flow. See the [user guide](docs/USER_GUIDE.md) for details.
+
+### 2. Create a BucketClass (admin, once per backend)
 
 ```yaml
 apiVersion: objectstorage.k8s.io/v1alpha1
@@ -154,15 +183,16 @@ metadata:
 driverName: k8s-s3-bucket-operator
 deletionPolicy: Delete
 parameters:
-  endpoint: "http://minio.minio-ns.svc.cluster.local:9000"
   region: "us-east-1"
+  # Optional: endpoint override per class (else operator uses MINIO_ENDPOINT)
+  # endpoint: "http://minio.minio-ns.svc.cluster.local:9000"
 ```
 
 ```bash
 kubectl apply -f bucketclass.yaml
 ```
 
-### 4. Claim a bucket (developer, per app)
+### 3. Claim a bucket (developer, per app)
 
 ```yaml
 apiVersion: objectstorage.k8s.io/v1alpha1
@@ -180,7 +210,9 @@ spec:
 kubectl apply -f bucketclaim.yaml
 ```
 
-### 5. Access credentials in your app
+For **quotas, lifecycle, read-only access, replication**, see [`config/samples/bucketclaim.yaml`](config/samples/bucketclaim.yaml) and the [user guide](docs/USER_GUIDE.md).
+
+### 4. Access credentials in your app
 
 ```yaml
 env:
@@ -242,21 +274,31 @@ oc apply -f deploy/openshift/operator.yaml
 
 ## Configuration Reference
 
-### BucketClaim
+Full tables and behavior notes: **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
+
+### BucketClaim (`spec`)
 
 | Field | Description | Required |
 |---|---|---|
 | `bucketClassName` | Which BucketClass to use | Yes |
-| `protocols` | Storage protocols (`S3`) | Yes |
-| `bucketName` | Explicit bucket name (auto-generated if omitted) | No |
+| `protocols` | Storage protocols (`S3`) | Recommended |
+| `bucketName` | Explicit bucket name (default `<namespace>-<claim-name>`) | No |
+| `quota` | Hard quota (e.g. `50Gi`) | No |
+| `accessType` | `ReadWrite` or `ReadOnly` for generated credentials | No (default `ReadWrite`) |
+| `lifecycleRules` | Prefix + `expiration.days` rules | No |
+| `replicationTarget` | Remote endpoint, bucket, keys for replication rule | No |
 
-### BucketClass Parameters
+### BucketClass (top-level fields)
 
-| Parameter | Description | Default |
+| Field | Description | Default |
 |---|---|---|
-| `endpoint` | S3/MinIO endpoint URL | — |
-| `region` | S3 region | `us-east-1` |
-| `deletionPolicy` | `Delete` or `Retain` on claim deletion | `Retain` |
+| `driverName` | Must be `k8s-s3-bucket-operator` | — |
+| `deletionPolicy` | `Delete` or `Retain` bucket when claim is deleted | `Retain` |
+| `objectLockingEnabled` | Enable object lock at **bucket creation** | `false` |
+| `retentionMode` | `GOVERNANCE` or `COMPLIANCE` | — |
+| `retentionDays` | Retention duration in days (declarative / compliance alignment) | — |
+| `parameters.region` | S3 region for bucket creation | `us-east-1` if empty |
+| `parameters.endpoint` | Override MinIO endpoint for this class | Operator `MINIO_ENDPOINT` if omitted |
 
 ---
 
@@ -266,13 +308,16 @@ oc apply -f deploy/openshift/operator.yaml
 - [x] Automatic credential generation
 - [x] Namespace isolation
 - [x] OpenShift SCC support
-- [ ] Bucket lifecycle policies (expiry, archival)
+- [x] Bucket lifecycle rules (prefix + expiration days)
+- [x] Bucket quota (hard quota via MinIO Admin API)
+- [x] Object lock at bucket creation + retention fields on class
+- [x] Read-only vs read-write generated policies
+- [x] Replication target (advanced; environment-dependent)
 - [ ] Credential rotation
 - [ ] AWS S3 backend
 - [ ] Ceph RGW backend
 - [ ] Prometheus metrics
 - [ ] Helm chart
-- [ ] Bucket quota management
 
 ---
 
