@@ -1,0 +1,8 @@
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: example-pg-backups
+driverName: k8s-s3-bucket-operator
+deletionPolicy: Delete
+parameters:
+  region: "us-east-1"

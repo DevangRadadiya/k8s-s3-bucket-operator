@@ -5,7 +5,7 @@ kind: Namespace
 metadata:
   name: k8s-s3-bucket-operator
   annotations:
-    openshift.io/description: "k8s-s3-bucket-operator — COSI driver for MinIO"
+    openshift.io/description: "k8s-s3-bucket-operator — MinIO bucket provisioning"
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -22,11 +22,11 @@ metadata:
   name: k8s-s3-bucket-operator-role
 rules:
   - apiGroups: ["objectstorage.k8s.io"]
-    resources: ["buckets", "bucketaccesses"]
+    resources: ["bucketclaims", "bucketclaims/status", "bucketclasses", "bucketclasses/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
@@ -64,7 +64,7 @@ metadata:
   labels:
     app: k8s-s3-bucket-operator
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: k8s-s3-bucket-operator
@@ -82,8 +82,17 @@ spec:
           type: RuntimeDefault
       containers:
         - name: operator
+          args:
+            - "--leader-elect=true"
           image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
           imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -111,9 +120,6 @@ spec:
                 secretKeyRef:
                   name: minio-credentials
                   key: MINIO_USE_SSL
-          volumeMounts:
-            - name: cosi-socket
-              mountPath: /var/lib/cosi
           resources:
             requests:
               cpu: "50m"
@@ -121,6 +127,30 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
-      volumes:
-        - name: cosi-socket
-          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-s3-bucket-operator-metrics
+  namespace: k8s-s3-bucket-operator
+  labels:
+    app: k8s-s3-bucket-operator
+spec:
+  selector:
+    app: k8s-s3-bucket-operator
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8s-s3-bucket-operator
+  namespace: k8s-s3-bucket-operator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: k8s-s3-bucket-operator

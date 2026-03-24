@@ -1,6 +1,6 @@
 # Artifact Hub package metadata (Helm OCI)
 # https://artifacthub.io/docs/topics/annotations/helm/
-version: 0.1.1
+version: 0.1.2
 name: k8s-s3-bucket-operator
 displayName: k8s-s3-bucket-operator
 createdAt: "2026-03-23T00:00:00Z"

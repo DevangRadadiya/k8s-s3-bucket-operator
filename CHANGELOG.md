@@ -10,6 +10,13 @@ when versioned releases are published.
 
 ### Added
 
+- Prometheus metrics for `BucketClaim` reconciliation (`internal/controller/metrics.go`); wire manager **metrics** bind address in `cmd/main.go` (controller-runtime v0.23).
+- Metrics **Service** and **PodDisruptionBudget** in `deploy/operator.yaml`; same patterns in `deploy/openshift/operator.yaml` (OpenShift RBAC aligned with Kubernetes CRDs; HA **2 replicas** + leader election; removed unused COSI socket mount).
+- Grafana dashboard JSON: `deploy/grafana-dashboard.json`; monitoring guide `docs/MONITORING.md`.
+- Example manifests: `examples/postgresql-backup`, `examples/application-uploads`, `examples/logs-archival`.
+- GitHub Actions workflow `test.yml` (unit tests + kind E2E); reusable E2E entrypoint `test/e2e/run.sh` with `OPERATOR_IMAGE` / `KUBECTL` overrides.
+- Helm **0.1.2**: metrics Service template, optional PDB (`values.yaml`), container ports for metrics/health probes.
+- `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` on `docker-publish.yml` and `helm-publish.yml` to match Node 24 runner migration.
 - Community files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates.
 - PR template (`.github/pull_request_template.md`) and release checklist (`docs/RELEASE_CHECKLIST.md`).
 - User docs: `docs/FAQ.md`, `docs/TRY_LOCALLY.md`; Kustomize bundle `deploy/kustomization.yaml` (`kubectl apply -k deploy/`).
@@ -17,6 +24,10 @@ when versioned releases are published.
 - Makefile: `make deploy-kustomize` (`kubectl apply -k deploy/`).
 - Helm chart `charts/k8s-s3-bucket-operator` (CRDs + operator); CI workflow `helm-publish.yml` pushes OCI packages to `ghcr.io/<owner>/helm-charts`.
 - Docs: `docs/ARTIFACT_HUB.md`, `charts/README.md`; Makefile `helm-lint` / `helm-package`.
+
+### Changed
+
+- User guide: monitoring section, `v1alpha1` stability note, production image tag guidance, replication marked advanced/partial.
 
 ### Removed
 

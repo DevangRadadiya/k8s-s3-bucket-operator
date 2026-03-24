@@ -1,0 +1,17 @@
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: cluster-logs-archive
+  namespace: observability
+spec:
+  bucketClassName: example-logs-archive
+  protocols:
+    - S3
+  quota: "1Ti"
+  accessType: ReadWrite
+  lifecycleRules:
+    - id: ExpireOldArchives
+      status: Enabled
+      prefix: ""
+      expiration:
+        days: 365

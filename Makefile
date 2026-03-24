@@ -1,6 +1,6 @@
 IMG ?= ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
 
-.PHONY: all build test lint docker-build docker-push deploy deploy-kustomize helm-lint helm-package undeploy
+.PHONY: all build test lint docker-build docker-push deploy deploy-kustomize helm-lint helm-package undeploy test-e2e test-e2e-openshift
 
 all: build
 
@@ -63,6 +63,13 @@ deploy-openshift:
 	kubectl apply -f deploy/objectstorage.k8s.io_bucketclaims.yaml
 	kubectl apply -f deploy/openshift/scc.yaml
 	kubectl apply -f deploy/openshift/operator.yaml
+
+## End-to-end tests
+test-e2e:
+	./test/e2e/run.sh k8s
+
+test-e2e-openshift:
+	./test/e2e/run.sh openshift
 
 ## Tidy Go modules
 tidy:

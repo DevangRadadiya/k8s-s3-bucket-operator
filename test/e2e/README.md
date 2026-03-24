@@ -3,9 +3,9 @@
 This folder contains the End-to-End (E2E) testing framework for the `k8s-s3-bucket-operator`.
 Users and contributors can run these tests locally on a `kind` cluster to verify the operator's functionality before installing it on a production cluster.
 
-## Running the E2E Test
+## Running the E2E tests
 
-The `run-e2e.sh` script automates the complete lifecycle:
+The scripts automate the complete lifecycle:
 1. Spins up a test MinIO instance (`minio-ns`)
 2. Deploys the operator CRDs and the manager pod
 3. Applies a sample `BucketClaim` and `BucketClass`
@@ -18,9 +18,33 @@ The `run-e2e.sh` script automates the complete lifecycle:
 - `kubectl`
 - `make`
 
-### Execute
+### Execute (Kubernetes profile)
 
 From the project root, run:
 ```bash
 ./test/e2e/run-e2e.sh
 ```
+
+### Execute (OpenShift profile)
+
+```bash
+./test/e2e/run-e2e-openshift.sh
+```
+
+### Unified entrypoint
+
+```bash
+./test/e2e/run.sh k8s
+./test/e2e/run.sh openshift
+```
+
+### Test custom operator image
+
+Use this to validate a just-built image before release:
+
+```bash
+OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run.sh k8s
+OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run.sh openshift
+```
+
+You can also set `KUBECTL=oc` for OpenShift CLI environments.

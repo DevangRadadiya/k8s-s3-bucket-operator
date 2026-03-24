@@ -1,0 +1,11 @@
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: app-uploads
+  namespace: my-app
+spec:
+  bucketClassName: example-app-uploads
+  protocols:
+    - S3
+  quota: "200Gi"
+  accessType: ReadWrite

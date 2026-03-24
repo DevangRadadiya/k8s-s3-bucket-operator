@@ -72,6 +72,22 @@ Default manifests use **`latest`**. For reproducible tests against a specific CI
 
 The default deployment runs **2 replicas** with **`--leader-elect=true`** so only one reconciler is active at a time.
 
+A **PodDisruptionBudget** (`minAvailable: 1`) is included in `deploy/operator.yaml` so voluntary disruptions (node drains) do not take all replicas down at once.
+
+### Monitoring (Prometheus)
+
+Metrics are exposed on **port 8080** at path **`/metrics`**. A ClusterIP **Service** (`k8s-s3-bucket-operator-metrics`) is defined for scraping.
+
+See **[MONITORING.md](MONITORING.md)** for metric names, a Grafana dashboard import (`deploy/grafana-dashboard.json`), and `ServiceMonitor` hints.
+
+### API stability (`v1alpha1`)
+
+`objectstorage.k8s.io/v1alpha1` may change before a **beta/GA** API. Pin operator and chart versions for production, and read release notes when upgrading.
+
+### Production image tags
+
+`:latest` and `:main` are convenient for development. For production, prefer a **release tag** (for example `v0.2.0`) or an **image digest** so rollouts are reproducible.
+
 ---
 
 ## BucketClass reference
@@ -188,8 +204,10 @@ Mount or reference these in your `Deployment` / `Pod` like any other Secret.
 
 ### 5. Replication
 
+- **Status:** advanced / **partially supported** — the operator applies a minimal replication configuration via the MinIO API; end-to-end replication still depends on your MinIO topology, versioning, and remote credentials.
 - `replicationTarget` triggers `SetBucketReplication` on the **source** bucket.
 - The target cluster must be reachable and configured to accept replication; you may need extra MinIO configuration (service accounts, replication ARNs) beyond this operator’s minimal rule.
+- Validate against the **MinIO version** you run; treat this field as experimental until you have a tested reference architecture.
 - Treat this as an **advanced** feature and validate in your environment.
 
 ### 6. Deletion policy

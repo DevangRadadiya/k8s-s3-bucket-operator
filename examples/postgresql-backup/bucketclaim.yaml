@@ -1,0 +1,17 @@
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: postgres-backups
+  namespace: database
+spec:
+  bucketClassName: example-pg-backups
+  protocols:
+    - S3
+  quota: "100Gi"
+  accessType: ReadWrite
+  lifecycleRules:
+    - id: ExpireOldDumps
+      status: Enabled
+      prefix: daily/
+      expiration:
+        days: 30

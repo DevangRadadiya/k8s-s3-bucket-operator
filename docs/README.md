@@ -7,6 +7,7 @@
 - **[ARTIFACT_HUB.md](ARTIFACT_HUB.md)** — list the Helm OCI chart on Artifact Hub
 - **[ROADMAP.md](ROADMAP.md)** — public phased roadmap (supported now vs planned)
 - **[CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md)** — mode/backend capability status
+- **[MONITORING.md](MONITORING.md)** — Prometheus metrics, Service scrape, Grafana dashboard
 
 **Helm:** [`../charts/README.md`](../charts/README.md)
 

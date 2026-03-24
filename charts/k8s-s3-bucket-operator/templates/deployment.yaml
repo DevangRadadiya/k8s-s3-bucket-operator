@@ -28,6 +28,13 @@ spec:
           args:
             - "--leader-elect=true"
           {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

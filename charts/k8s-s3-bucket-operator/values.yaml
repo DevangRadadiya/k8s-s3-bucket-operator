@@ -62,3 +62,14 @@ minio:
 rbac:
   clusterRoleName: ""
   clusterRoleBindingName: ""
+
+# Prometheus metrics (controller-runtime); scrape path is /metrics on port 8080
+metrics:
+  service:
+    enabled: true
+    port: 8080
+
+# Keep at least one pod up during voluntary disruptions (matches HA + leader election)
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

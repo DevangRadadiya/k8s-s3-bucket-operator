@@ -1,0 +1,8 @@
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: example-logs-archive
+driverName: k8s-s3-bucket-operator
+deletionPolicy: Retain
+parameters:
+  region: "us-east-1"

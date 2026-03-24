@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
@@ -31,14 +32,22 @@ type BucketClaimReconciler struct {
 
 func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
+	className := "unknown"
+	start := time.Now()
+	defer func() {
+		reconcileDurationSeconds.WithLabelValues(className).Observe(time.Since(start).Seconds())
+	}()
 
 	// Fetch the BucketClaim instance
 	claim := &v1alpha1.BucketClaim{}
 	err := r.Get(ctx, req.NamespacedName, claim)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			reconcileTotal.WithLabelValues("not_found").Inc()
 			return ctrl.Result{}, nil
 		}
+		reconcileErrorsTotal.WithLabelValues("get_claim").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -48,14 +57,19 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if controllerutil.ContainsFinalizer(claim, bucketClaimFinalizer) {
 			if err := r.finalizeBucketClaim(ctx, claim); err != nil {
 				log.Error(err, "Failed to finalize BucketClaim")
+				reconcileErrorsTotal.WithLabelValues("finalize").Inc()
+				reconcileTotal.WithLabelValues("error").Inc()
 				return ctrl.Result{}, err
 			}
 			controllerutil.RemoveFinalizer(claim, bucketClaimFinalizer)
 			err := r.Update(ctx, claim)
 			if err != nil {
+				reconcileErrorsTotal.WithLabelValues("remove_finalizer").Inc()
+				reconcileTotal.WithLabelValues("error").Inc()
 				return ctrl.Result{}, err
 			}
 		}
+		reconcileTotal.WithLabelValues("deleted").Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -64,6 +78,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		controllerutil.AddFinalizer(claim, bucketClaimFinalizer)
 		err = r.Update(ctx, claim)
 		if err != nil {
+			reconcileErrorsTotal.WithLabelValues("add_finalizer").Inc()
+			reconcileTotal.WithLabelValues("error").Inc()
 			return ctrl.Result{}, err
 		}
 	}
@@ -72,11 +88,15 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	class := &v1alpha1.BucketClass{}
 	if err := r.Get(ctx, types.NamespacedName{Name: claim.Spec.BucketClassName}, class); err != nil {
 		log.Error(err, "Failed to get BucketClass", "Class", claim.Spec.BucketClassName)
+		reconcileErrorsTotal.WithLabelValues("get_bucketclass").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
+	className = class.Name
 
 	if class.DriverName != "k8s-s3-bucket-operator" {
 		log.Info("BucketClass is not supported by this operator", "DriverName", class.DriverName)
+		reconcileTotal.WithLabelValues("ignored_driver").Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -95,6 +115,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// 1. Create Bucket
 	if err := r.Minio.CreateBucket(ctx, bucketName, region, class.ObjectLockingEnabled); err != nil {
 		log.Error(err, "Failed to create bucket in MinIO")
+		reconcileErrorsTotal.WithLabelValues("create_bucket").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -104,6 +126,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if ok && quotaBytes > 0 {
 			if err := r.Minio.SetBucketQuota(ctx, bucketName, quotaBytes); err != nil {
 				log.Error(err, "Failed to set bucket quota")
+				reconcileErrorsTotal.WithLabelValues("set_quota").Inc()
+				reconcileTotal.WithLabelValues("error").Inc()
 				return ctrl.Result{}, err
 			}
 		}
@@ -125,6 +149,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.Minio.SetBucketLifecycle(ctx, bucketName, lc); err != nil {
 			log.Error(err, "Failed to set bucket lifecycle")
+			reconcileErrorsTotal.WithLabelValues("set_lifecycle").Inc()
+			reconcileTotal.WithLabelValues("error").Inc()
 			return ctrl.Result{}, err
 		}
 	}
@@ -159,6 +185,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	creds, err := r.Minio.GrantAccess(ctx, bucketName, accountID, string(claim.Spec.AccessType), existingAccessKey, existingSecretKey)
 	if err != nil {
 		log.Error(err, "Failed to grant access")
+		reconcileErrorsTotal.WithLabelValues("grant_access").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -184,6 +212,8 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err != nil {
 		log.Error(err, "Failed to reconcile Secret")
+		reconcileErrorsTotal.WithLabelValues("reconcile_secret").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
 	if op != controllerutil.OperationResultNone {
@@ -201,9 +231,13 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err := r.Status().Update(ctx, claim); err != nil {
 		log.Error(err, "Failed to update BucketClaim status")
+		reconcileErrorsTotal.WithLabelValues("update_status").Inc()
+		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
 
+	bucketsBoundTotal.WithLabelValues(class.Name).Inc()
+	reconcileTotal.WithLabelValues("success").Inc()
 	log.Info("Successfully reconciled BucketClaim", "BucketName", bucketName)
 	return ctrl.Result{}, nil
 }

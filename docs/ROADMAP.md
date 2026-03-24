@@ -28,10 +28,10 @@ It is intentionally staged to keep reliability high while expanding scope.
 
 ### Wave 1: Reliability and adoption (now to ~8 weeks)
 
-- Improve observability (metrics and dashboard)
-- Strengthen CI quality gates and test confidence
-- Expand real-world examples and operator runbooks
-- Keep README and docs copy-paste friendly
+- Improve observability (metrics and dashboard) — **shipped:** controller metrics, `deploy/grafana-dashboard.json`, `docs/MONITORING.md`, metrics Service in manifests.
+- Strengthen CI quality gates and test confidence — **shipped:** `.github/workflows/test.yml` (unit + kind E2E).
+- Expand real-world examples and operator runbooks — **shipped:** `examples/` (PostgreSQL backup, uploads, log archival).
+- Keep README and docs copy-paste friendly — ongoing; **optional:** short demo video.
 
 ### Wave 2: Hybrid API mode (target ~3-6 months)
 

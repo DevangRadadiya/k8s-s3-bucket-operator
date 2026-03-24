@@ -79,6 +79,13 @@ spec:
             - "--leader-elect=true"
           image: ghcr.io/devangradadiya/k8s-s3-bucket-operator:latest
           imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -153,3 +160,30 @@ subjects:
   - kind: ServiceAccount
     name: k8s-s3-bucket-operator
     namespace: k8s-s3-bucket-operator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-s3-bucket-operator-metrics
+  namespace: k8s-s3-bucket-operator
+  labels:
+    app: k8s-s3-bucket-operator
+spec:
+  selector:
+    app: k8s-s3-bucket-operator
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8s-s3-bucket-operator
+  namespace: k8s-s3-bucket-operator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: k8s-s3-bucket-operator
