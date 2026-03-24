@@ -1,5 +1,5 @@
-# OpenShift-specific deployment — uses Route instead of LoadBalancer,
-# references the SCC via service account annotation
+# OpenShift-specific deployment — references the SCC via ServiceAccount annotation.
+# Expose MinIO or the operator UI with a Route/Ingress separately if needed.
 apiVersion: v1
 kind: Namespace
 metadata:
