@@ -8,6 +8,11 @@ when versioned releases are published.
 
 ## [Unreleased]
 
+### Fixed
+
+- CI **E2E (kind)**: load the operator image into **every** kind cluster (default name is `chart-testing`, not `kind`); patch **imagePullPolicy** to `IfNotPresent` when using `OPERATOR_IMAGE` so kubelet does not try to pull a local test tag from a registry.
+- **Test** workflow: workflow-level `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`; bump `actions/checkout` to **v5**, `actions/setup-go` to **v6**, `helm/kind-action` to **v1.14.0** to reduce Node 20 deprecation noise.
+
 ### Added
 
 - Prometheus metrics for `BucketClaim` reconciliation (`internal/controller/metrics.go`); wire manager **metrics** bind address in `cmd/main.go` (controller-runtime v0.23).

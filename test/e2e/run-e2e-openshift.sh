@@ -27,6 +27,8 @@ make deploy-openshift
 if [ -n "${OPERATOR_IMAGE}" ]; then
   echo "==> 2a. Overriding operator image: ${OPERATOR_IMAGE}"
   "${KUBECTL_BIN}" -n "${OPERATOR_NS}" set image deploy/k8s-s3-bucket-operator operator="${OPERATOR_IMAGE}"
+  "${KUBECTL_BIN}" -n "${OPERATOR_NS}" patch deploy k8s-s3-bucket-operator --type=json \
+    -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/imagePullPolicy", "value": "IfNotPresent"}]'
 fi
 "${KUBECTL_BIN}" rollout status deployment/k8s-s3-bucket-operator -n "${OPERATOR_NS}" --timeout="${WAIT_TIMEOUT}"
 

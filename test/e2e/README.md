@@ -47,4 +47,12 @@ OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run
 OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run.sh openshift
 ```
 
+When the image is only on the node (e.g. **kind load docker-image**), the script sets **imagePullPolicy** to `IfNotPresent` after `kubectl set image` so Kubernetes does not try to pull a non-registry tag with **Always**.
+
+**kind:** the default cluster name from [helm/kind-action](https://github.com/helm/kind-action) is often `chart-testing`, not `kind`. Load with:
+
+`kind load docker-image <image:tag> --name chart-testing`
+
+(or loop `kind get clusters` as in `.github/workflows/test.yml`).
+
 You can also set `KUBECTL=oc` for OpenShift CLI environments.
