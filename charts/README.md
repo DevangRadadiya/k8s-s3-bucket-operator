@@ -6,12 +6,12 @@ Install from **OCI** (after CI publishes to GHCR):
 
 ```bash
 helm install k8s-s3-bucket-operator oci://ghcr.io/devangradadiya/helm-charts/k8s-s3-bucket-operator \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --namespace k8s-s3-bucket-operator \
   --create-namespace
 ```
 
-> Replace `0.1.0` with the chart version in `Chart.yaml`. Use your GitHub org/user in lowercase for `ghcr.io/...` if you fork the repo.
+> Replace `0.1.1` with the chart version in `Chart.yaml`. Use your GitHub org/user in lowercase for `ghcr.io/...` if you fork the repo.
 
 ### From a clone (dev)
 

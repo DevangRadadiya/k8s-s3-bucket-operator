@@ -4,7 +4,7 @@ description: Kubernetes operator for provisioning S3-compatible buckets (MinIO) 
 type: application
 icon: https://raw.githubusercontent.com/cncf/artwork/main/projects/kubernetes/icon/color/kubernetes-icon-color.png
 # Chart version — bump when changing templates/values/crds packaging
-version: 0.1.0
+version: 0.1.1
 # Default operator image tag when values.image.tag is empty
 appVersion: "latest"
 kubeVersion: ">=1.25.0-0"

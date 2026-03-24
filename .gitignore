@@ -5,6 +5,9 @@ kubectl
 *.tar.gz
 *.exe
 
+# Scratch / local test files (do not commit)
+tmp_*.go
+
 # Go
 vendor/
 cover.out

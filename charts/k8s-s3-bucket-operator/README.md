@@ -6,7 +6,7 @@ Deploys the **k8s-s3-bucket-operator** (CRDs + RBAC + Deployment + MinIO Secret)
 
 ```bash
 helm install k8s-s3-bucket-operator oci://ghcr.io/devangradadiya/helm-charts/k8s-s3-bucket-operator \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --namespace k8s-s3-bucket-operator \
   --create-namespace
 ```

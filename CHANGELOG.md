@@ -18,6 +18,10 @@ when versioned releases are published.
 - Helm chart `charts/k8s-s3-bucket-operator` (CRDs + operator); CI workflow `helm-publish.yml` pushes OCI packages to `ghcr.io/<owner>/helm-charts`.
 - Docs: `docs/ARTIFACT_HUB.md`, `charts/README.md`; Makefile `helm-lint` / `helm-package`.
 
+### Removed
+
+- Accidental root `tmp_test.go` scratch file; ignore `tmp_*.go` via `.gitignore`.
+
 ---
 
 ## Earlier history
