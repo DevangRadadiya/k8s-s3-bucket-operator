@@ -59,6 +59,8 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 | Code of conduct | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor Covenant 3.0 |
 | Helm charts | [`charts/README.md`](charts/README.md) | OCI install, values, CRD notes |
 | Artifact Hub | [`docs/ARTIFACT_HUB.md`](docs/ARTIFACT_HUB.md) | Register & scan the OCI repo |
+| Public roadmap | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Planned delivery waves and priorities |
+| Capability matrix | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Supported-now vs planned feature/backends |
 
 ## Quick start (for users) ⚡
 
@@ -91,7 +93,7 @@ kubectl apply -k deploy/
 
 ```bash
 helm install k8s-s3-bucket-operator oci://ghcr.io/devangradadiya/helm-charts/k8s-s3-bucket-operator \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --namespace k8s-s3-bucket-operator \
   --create-namespace
 ```
@@ -242,11 +244,24 @@ oc apply -f "${REPO_URL}/deploy/openshift/operator.yaml"
 
 Then patch `minio-credentials` in namespace `k8s-s3-bucket-operator` the same way as in the Quick start.
 
-## Current backend support
+## Supported now vs planned
 
-- MinIO: supported
-- AWS S3: planned
-- Ceph RGW: planned
+### Supported now (production path)
+
+- **Backend:** MinIO
+- **API mode:** Standalone CRDs (`BucketClass`, `BucketClaim`)
+- **Install methods:** Raw YAML, Kustomize, Helm OCI
+
+### In progress / planned
+
+- **Hybrid mode:** Standalone + COSI-compatible mode
+- **Backends:** AWS S3 first, then Ceph RGW and additional providers based on demand
+- **Advanced portability:** staged multi-backend rollout from a shared backend abstraction
+
+See:
+
+- [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for current capability status
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) for planned waves and sequence
 
 ## License
 

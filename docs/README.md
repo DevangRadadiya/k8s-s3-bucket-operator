@@ -5,6 +5,8 @@
 - **[TRY_LOCALLY.md](TRY_LOCALLY.md)** — minimal local cluster path
 - **[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)** — release/tag flow and verification checklist
 - **[ARTIFACT_HUB.md](ARTIFACT_HUB.md)** — list the Helm OCI chart on Artifact Hub
+- **[ROADMAP.md](ROADMAP.md)** — public phased roadmap (supported now vs planned)
+- **[CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md)** — mode/backend capability status
 
 **Helm:** [`../charts/README.md`](../charts/README.md)
 
