@@ -96,7 +96,13 @@ echo "==> 1. Setting up MinIO test instance"
 "${KUBECTL_BIN}" rollout status deployment/minio -n "${MINIO_NS}" --timeout="${WAIT_TIMEOUT}"
 
 echo "==> 2. Setting up k8s-s3-bucket-operator (OpenShift Profile)"
-make deploy-openshift
+# Only OpenShift supports SCC. On plain Kubernetes clusters, fall back to the standard deploy.
+if "${KUBECTL_BIN}" api-resources --api-group=security.openshift.io 2>/dev/null | grep -q "securitycontextconstraints"; then
+  make deploy-openshift
+else
+  echo "OpenShift SCC API not found; running standard Kubernetes deploy instead."
+  make deploy
+fi
 if [ -n "${OPERATOR_IMAGE}" ]; then
   echo "==> 2a. Overriding operator image: ${OPERATOR_IMAGE}"
   "${KUBECTL_BIN}" -n "${OPERATOR_NS}" set image deploy/k8s-s3-bucket-operator operator="${OPERATOR_IMAGE}"

@@ -61,3 +61,35 @@ jobs:
           OPERATOR_IMAGE: k8s-s3-bucket-operator:test
         run: ./test/e2e/run.sh k8s
 
+  e2e-openshift-profile:
+    name: E2E (kind, OpenShift profile)
+    runs-on: ubuntu-latest
+    needs: unit-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup kind
+        uses: helm/kind-action@v1.14.0
+
+      # Run the "OpenShift profile" E2E. The script falls back to plain Kubernetes deploy
+      # if OpenShift SCC APIs are not available (so it can still run on kind).
+      - name: Build and load operator image into kind
+        run: |
+          docker build -t k8s-s3-bucket-operator:test .
+          echo "Kind clusters:" && kind get clusters
+          for c in $(kind get clusters); do
+            echo "Loading image into cluster: $c"
+            kind load docker-image k8s-s3-bucket-operator:test --name "$c"
+          done
+
+      - name: Run OpenShift-profile E2E
+        env:
+          OPERATOR_IMAGE: k8s-s3-bucket-operator:test
+        run: ./test/e2e/run.sh openshift
+
