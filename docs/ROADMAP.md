@@ -17,6 +17,8 @@ It is intentionally staged to keep reliability high while expanding scope.
 - MinIO backend
 - Standalone CRDs (`BucketClass`, `BucketClaim`)
 - Install via raw YAML, Kustomize, and Helm OCI
+- `BucketClaim` provisioning lifecycle via `status.conditions` (Ready) + `status.phase`
+- Per-`BucketClass` MinIO admin credentials via `minioCredentialSecretRef` (optional)
 
 ### Planned
 
@@ -31,6 +33,8 @@ It is intentionally staged to keep reliability high while expanding scope.
 - Improve observability (metrics and dashboard) — **shipped:** controller metrics, `deploy/grafana-dashboard.json`, `docs/MONITORING.md`, metrics Service in manifests.
 - Strengthen CI quality gates and test confidence — **shipped:** `.github/workflows/test.yml` (unit + kind E2E).
 - Expand real-world examples and operator runbooks — **shipped:** `examples/` (PostgreSQL backup, uploads, log archival).
+- Add production-grade claim lifecycle visibility — **shipped:** `BucketClaim.status.conditions` (Ready/BucketProvisioned) and improved reconcile status handling.
+- Enable multi-backend readiness for credentials — **shipped:** `BucketClass.minioCredentialSecretRef` for per-class MinIO admin Secrets.
 - Keep README and docs copy-paste friendly — ongoing; **optional:** short demo video.
 
 ### Wave 2: Hybrid API mode (target ~3-6 months)

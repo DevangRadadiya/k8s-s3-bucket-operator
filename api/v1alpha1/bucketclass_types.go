@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -57,6 +58,13 @@ type BucketClass struct {
 	// Parameters is an opaque map for the driver.
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty"`
+
+	// MinioCredentialSecretRef references a Secret (namespace + name) with MinIO admin credentials for this class.
+	// When omitted, the operator uses MINIO_* from its own process environment (Deployment env).
+	// Secret keys: MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, and optionally MINIO_USE_SSL ("true"/"false").
+	// Aliases also accepted: endpoint, accessKey, secretKey, useSSL.
+	// +optional
+	MinioCredentialSecretRef *corev1.SecretReference `json:"minioCredentialSecretRef,omitempty"`
 }
 
 // +kubebuilder:object:root=true

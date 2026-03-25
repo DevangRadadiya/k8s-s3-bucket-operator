@@ -41,6 +41,37 @@ func ConfigFromEnv() Config {
 	}
 }
 
+func firstSecretString(data map[string][]byte, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := data[k]; ok && len(v) > 0 {
+			return strings.TrimSpace(string(v))
+		}
+	}
+	return ""
+}
+
+// ConfigFromSecretData builds MinIO config from Secret .Data (same keys as operator env).
+// Accepts MINIO_* keys or aliases: endpoint, accessKey, secretKey, useSSL.
+func ConfigFromSecretData(data map[string][]byte) (Config, error) {
+	if len(data) == 0 {
+		return Config{}, fmt.Errorf("secret data is empty")
+	}
+	endpoint := firstSecretString(data, "MINIO_ENDPOINT", "endpoint")
+	access := firstSecretString(data, "MINIO_ACCESS_KEY", "accessKey", "accessKeyID")
+	secret := firstSecretString(data, "MINIO_SECRET_KEY", "secretKey", "secretAccessKey")
+	useSSLStr := firstSecretString(data, "MINIO_USE_SSL", "useSSL")
+	useSSL := useSSLStr == "true" || useSSLStr == "1" || strings.EqualFold(useSSLStr, "yes")
+	if endpoint == "" || access == "" || secret == "" {
+		return Config{}, fmt.Errorf("secret must define endpoint (MINIO_ENDPOINT or endpoint), access key, and secret key")
+	}
+	return Config{
+		Endpoint:  endpoint,
+		AccessKey: access,
+		SecretKey: secret,
+		UseSSL:    useSSL,
+	}, nil
+}
+
 // Client wraps both the MinIO S3 client (bucket operations)
 // and the MinIO admin client (user + policy management).
 type Client struct {

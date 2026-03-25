@@ -78,6 +78,41 @@ spec:
             status:
               type: object
               properties:
+                conditions:
+                  type: array
+                  description: Current service state of the BucketClaim.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                      - message
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      type:
+                        type: string
+                        maxLength: 316
                 secretReference:
                   type: object
                   properties:

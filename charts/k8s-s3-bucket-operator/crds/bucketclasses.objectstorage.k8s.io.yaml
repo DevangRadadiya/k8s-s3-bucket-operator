@@ -38,3 +38,13 @@ spec:
               type: object
               additionalProperties:
                 type: string
+            minioCredentialSecretRef:
+              type: object
+              description: >-
+                Secret (namespace + name) with MinIO admin keys (MINIO_ENDPOINT, MINIO_ACCESS_KEY,
+                MINIO_SECRET_KEY, optional MINIO_USE_SSL). If unset, operator uses its Deployment env.
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string

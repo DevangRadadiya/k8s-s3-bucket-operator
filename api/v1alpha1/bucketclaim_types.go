@@ -83,6 +83,13 @@ type BucketClaimSpec struct {
 
 // BucketClaimStatus defines the observed state of BucketClaim
 type BucketClaimStatus struct {
+	// Conditions represent the latest available observations of the claim's state.
+	// The Ready condition surfaces provisioning progress (Provisioning), success (BucketProvisioned), or failure reasons.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// SecretReference points to the Secret containing the bucket credentials.
 	// +optional
 	SecretReference *v1.ObjectReference `json:"secretReference,omitempty"`
@@ -95,7 +102,7 @@ type BucketClaimStatus struct {
 	// +optional
 	BucketName string `json:"bucketName,omitempty"`
 
-	// Phase represents the current state of the BucketClaim (e.g. Bound, Pending).
+	// Phase represents the current state of the BucketClaim (e.g. Pending, Bound, Failed).
 	// +optional
 	Phase string `json:"phase,omitempty"`
 }

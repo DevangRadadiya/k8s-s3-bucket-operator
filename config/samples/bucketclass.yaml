@@ -11,6 +11,8 @@ retentionMode: GOVERNANCE
 retentionDays: 30
 parameters:
   region: "us-east-1"
-  # endpoint is read from the operator's MINIO_ENDPOINT env var
-  # Override per-class if you have multiple MinIO instances:
-  # endpoint: "minio.other-ns.svc.cluster.local:9000"
+  # MinIO admin credentials: default = operator Deployment MINIO_* env.
+  # For a different MinIO per class, create a Secret with MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_USE_SSL and reference it:
+  # minioCredentialSecretRef:
+  #   namespace: minio-ns
+  #   name: minio-admin-other

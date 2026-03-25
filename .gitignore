@@ -19,6 +19,10 @@ go.work.sum
 .idea/
 *.swp
 
+# Local-only editor metadata (do not commit)
+.cursorrules
+.cursor/
+
 # Local system
 .DS_Store
 .gemini/

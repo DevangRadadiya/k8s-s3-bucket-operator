@@ -26,7 +26,7 @@ For a minimal install path, see the [README](../README.md) **Quick start**. For 
 | **BucketClass** | Cluster | Cluster admin | Binds a class name to this operator (`driverName`), MinIO region/parameters, **deletion policy**, and optional **object lock / retention** defaults. |
 | **BucketClaim** | Namespaced | App team | Requests a bucket; operator creates the bucket, optional **quota / lifecycle / replication**, generates **IAM-style** access, and writes a **Secret**. |
 
-The operator talks to MinIO using environment variables on the deployment (see `deploy/operator.yaml` → `Secret` `minio-credentials`).
+By default the operator talks to MinIO using environment variables on the deployment (see `deploy/operator.yaml` → `Secret` `minio-credentials`). Optionally, each **BucketClass** can set **minioCredentialSecretRef** so claims using that class use a different MinIO admin Secret (multi-tenant / multiple backends). The operator’s ServiceAccount must be allowed to **get** that Secret (the bundled **ClusterRole** already allows **get** on Secrets cluster-wide).
 
 ---
 
@@ -116,6 +116,15 @@ parameters:
 | `retentionMode` | `GOVERNANCE` / `COMPLIANCE` | Declared default retention mode for documentation / future enforcement; align with your compliance process. |
 | `retentionDays` | int | Declared retention duration in days; align with your compliance process. |
 | `parameters.region` | string | S3 region passed to MinIO bucket creation (default `us-east-1` if empty). |
+| `minioCredentialSecretRef` | object | Optional. `namespace` + `name` of a Secret with the same keys as operator `minio-credentials`: `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, and optional `MINIO_USE_SSL` (`"true"` / `"false"`). Shorter aliases `endpoint`, `accessKey`, `secretKey`, `useSSL` are also accepted. If omitted, the operator uses its pod **MINIO_*** env. |
+
+Example (per-class backend):
+
+```yaml
+minioCredentialSecretRef:
+  namespace: team-a-infra
+  name: minio-admin-team-a
+```
 
 ---
 
@@ -233,9 +242,11 @@ Note: `mc ilm ls` was superseded by `mc ilm rule ls` on newer MinIO clients.
 
 ## Troubleshooting
 
+`BucketClaim` **status** includes **phase** (`Pending`, `Bound`, `Failed`) and a standard **Ready** condition in **status.conditions** (reasons such as `Provisioning`, `BucketProvisioned`, `BucketClassNotFound`, `UnsupportedDriver`, or stage-specific failures). Inspect with `kubectl get bucketclaim -n <ns> <name> -o yaml`.
+
 | Symptom | Check |
 |---------|--------|
-| Claim stuck / not Bound | `kubectl describe bucketclaim -n <ns> <name>`; operator logs: `kubectl logs -n k8s-s3-bucket-operator deploy/k8s-s3-bucket-operator` |
+| Claim stuck / not Bound | `status.conditions` (type `Ready`) and `status.phase`; `kubectl describe bucketclaim -n <ns> <name>`; operator logs: `kubectl logs -n k8s-s3-bucket-operator deploy/k8s-s3-bucket-operator` |
 | CrashLoopBackOff | Ensure CRDs match the operator version; ensure `MINIO_*` env vars are correct. |
 | Quota / ILM empty in `mc` | Confirm the operator image matches the code you expect; wait for scanner; use `mc ilm rule ls` not deprecated commands. |
 | Replication errors | Validate target credentials, bucket existence, and MinIO replication docs for your version. |

@@ -8,6 +8,11 @@ when versioned releases are published.
 
 ## [Unreleased]
 
+### Added
+
+- `BucketClaim` **status.conditions**: standard **Ready** condition with reasons such as `Provisioning`, `BucketProvisioned`, `BucketClassNotFound`, `UnsupportedDriver`, and failure reasons from reconcile stages; **status.phase** uses **Pending** while provisioning and **Failed** on errors.
+- `BucketClass` **minioCredentialSecretRef** (namespace + name): per-class MinIO admin Secret; when unset, the operator uses **MINIO_*** from its own Deployment env. Secret keys match the operator `minio-credentials` Secret (with short aliases documented in the user guide). Helm chart **0.1.4** packages both CRD schema updates.
+
 ### Fixed
 
 - CI **E2E (kind)**: load the operator image into **every** kind cluster (default name is `chart-testing`, not `kind`); patch **imagePullPolicy** to `IfNotPresent` when using `OPERATOR_IMAGE` so kubelet does not try to pull a local test tag from a registry.
