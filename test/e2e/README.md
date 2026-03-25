@@ -39,6 +39,10 @@ From the project root, run:
 ./test/e2e/run.sh openshift
 ```
 
+### Dev workflow reminder (for contributors)
+
+For PRs, create a dev/feature branch from `main` (example: `git checkout -b dev/my-wave1-fix`), run unit tests (`go test ./...`) and E2E (`./test/e2e/run.sh k8s`), then open a PR against `main`.
+
 ### Test custom operator image
 
 Use this to validate a just-built image before release:
@@ -46,6 +50,22 @@ Use this to validate a just-built image before release:
 ```bash
 OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run.sh k8s
 OPERATOR_IMAGE=ghcr.io/devangradadiya/k8s-s3-bucket-operator:main ./test/e2e/run.sh openshift
+```
+
+### Test with a local operator image (recommended)
+
+If you want the E2E to test the code from your current working tree, build a local image and load it into your `kind` cluster:
+
+```bash
+make docker-build IMG=k8s-s3-bucket-operator:test
+
+# Load into every kind cluster you have (default name is often chart-testing)
+for c in $(kind get clusters); do
+  kind load docker-image k8s-s3-bucket-operator:test --name "$c"
+done
+
+# Run E2E using the same local tag
+OPERATOR_IMAGE=k8s-s3-bucket-operator:test ./test/e2e/run.sh k8s
 ```
 
 When the image is only on the node (e.g. **kind load docker-image**), the script sets **imagePullPolicy** to `IfNotPresent` after `kubectl set image` so Kubernetes does not try to pull a non-registry tag with **Always**.
