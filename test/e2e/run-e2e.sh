@@ -25,9 +25,7 @@ assert_bucketclaim_ready() {
   local namespace="$2"
 
   local phase ready_reason ready_status
-  phase=$("${KUBECTL_BIN}" get bucketclaim "${claim_name}" -n "${namespace}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-  ready_status=$("${KUBECTL_BIN}" get bucketclaim "${claim_name}" -n "${namespace}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null || true)
-  ready_reason=$("${KUBECTL_BIN}" get bucketclaim "${claim_name}" -n "${namespace}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.reason}}{{end}}{{end}}' 2>/dev/null || true)
+  IFS=$'\t' read -r phase ready_status ready_reason <<< "$("${KUBECTL_BIN}" get bucketclaim "${claim_name}" -n "${namespace}" -o json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read(); o=json.loads(data) if data else {}; st=o.get("status",{}) or {}; phase=st.get("phase","") or ""; conds=st.get("conditions",[]) or []; cond=next((c for c in conds if (c.get("type")=="Ready" or c.get("Type")=="Ready")), {}); rs=cond.get("status","") or ""; rr=cond.get("reason","") or ""; sys.stdout.write(phase+"\t"+rs+"\t"+rr)' 2>/dev/null || true)"
 
   if [ "${phase}" != "Bound" ]; then
     echo "Error: ${claim_name} expected status.phase=Bound, got '${phase}'"
@@ -41,6 +39,54 @@ assert_bucketclaim_ready() {
     echo "Error: ${claim_name} expected status.conditions[type=Ready].reason=BucketProvisioned, got '${ready_reason}'"
     exit 1
   fi
+}
+
+wait_secret_gone() {
+  local secret_name="$1"
+  local namespace="$2"
+  local timeout_seconds="${3:-120}"
+  local deadline=$((SECONDS+timeout_seconds))
+
+  while [ $SECONDS -lt $deadline ]; do
+    if ! "${KUBECTL_BIN}" get secret "${secret_name}" -n "${namespace}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+
+  echo "Error: secret ${secret_name} still exists in ${namespace}"
+  return 1
+}
+
+wait_bucket_gone() {
+  local bucket_name="$1"
+  local bucket_dir="/data/${bucket_name}"
+  local timeout_seconds="${2:-180}"
+  local deadline=$((SECONDS+timeout_seconds))
+
+  while [ $SECONDS -lt $deadline ]; do
+    if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${bucket_dir}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+
+  echo "Error: MinIO bucket directory ${bucket_dir} still exists"
+  return 1
+}
+
+delete_bucketclaim_and_assert_cleanup() {
+  local claim_name="$1"
+  local namespace="$2"
+  local secret_name="$3"
+  local bucket_name="$4"
+
+  echo "==> Deleting BucketClaim ${claim_name} (expect secret + bucket cleanup)"
+  "${KUBECTL_BIN}" delete bucketclaim "${claim_name}" -n "${namespace}" --wait=false
+
+  # Finalizer removal is asynchronous; validate via GC for secret and bucket delete in MinIO.
+  wait_secret_gone "${secret_name}" "${namespace}" 180
+  wait_bucket_gone "${bucket_name}" 240
 }
 
 echo "==> 1. Setting up MinIO test instance"
@@ -67,10 +113,8 @@ echo "==> 3. Creating App Namespace and applying BucketClaim"
 echo "==> 4. Waiting for BucketClaim to bind..."
 sleep 3
 for i in {1..60}; do
-  PHASE=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-  READY_STATUS=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null || true)
-  READY_REASON=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.reason}}{{end}}{{end}}' 2>/dev/null || true)
-  if [ "$PHASE" == "Bound" ] || { [ "$READY_STATUS" == "True" ] && [ "$READY_REASON" == "BucketProvisioned" ]; }; then
+  IFS=$'\t' read -r PHASE READY_STATUS READY_REASON <<< "$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read(); o=json.loads(data) if data else {}; st=o.get("status",{}) or {}; phase=st.get("phase","") or ""; conds=st.get("conditions",[]) or []; cond=next((c for c in conds if (c.get("type")=="Ready" or c.get("Type")=="Ready")), {}); rs=cond.get("status","") or ""; rr=cond.get("reason","") or ""; sys.stdout.write(phase+"\t"+rs+"\t"+rr)' 2>/dev/null || true)"
+  if [ "$PHASE" == "Bound" ] && [ "$READY_STATUS" == "True" ] && [ "$READY_REASON" == "BucketProvisioned" ]; then
     echo "    BucketClaim is Bound!"
     break
   fi
@@ -78,7 +122,7 @@ for i in {1..60}; do
   sleep 3
 done
 
-if [ "$PHASE" != "Bound" ]; then
+if [ "$PHASE" != "Bound" ] || [ "$READY_STATUS" != "True" ] || [ "$READY_REASON" != "BucketProvisioned" ]; then
   echo "Error: BucketClaim did not bind in time."
   exit 1
 fi
@@ -157,10 +201,8 @@ EOF
 
 sleep 3
 for i in {1..60}; do
-  PHASE=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-  READY_STATUS=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null || true)
-  READY_REASON=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.reason}}{{end}}{{end}}' 2>/dev/null || true)
-  if [ "$PHASE" == "Bound" ] || { [ "$READY_STATUS" == "True" ] && [ "$READY_REASON" == "BucketProvisioned" ]; }; then
+  IFS=$'\t' read -r PHASE READY_STATUS READY_REASON <<< "$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read(); o=json.loads(data) if data else {}; st=o.get("status",{}) or {}; phase=st.get("phase","") or ""; conds=st.get("conditions",[]) or []; cond=next((c for c in conds if (c.get("type")=="Ready" or c.get("Type")=="Ready")), {}); rs=cond.get("status","") or ""; rr=cond.get("reason","") or ""; sys.stdout.write(phase+"\t"+rs+"\t"+rr)' 2>/dev/null || true)"
+  if [ "$PHASE" == "Bound" ] && [ "$READY_STATUS" == "True" ] && [ "$READY_REASON" == "BucketProvisioned" ]; then
     echo "    BucketClaim (secretref) is Bound!"
     break
   fi
@@ -168,13 +210,17 @@ for i in {1..60}; do
   sleep 3
 done
 
-if [ "$PHASE" != "Bound" ]; then
+if [ "$PHASE" != "Bound" ] || [ "$READY_STATUS" != "True" ] || [ "$READY_REASON" != "BucketProvisioned" ]; then
   echo "Error: BucketClaim (secretref) did not bind in time."
   exit 1
 fi
 
 "${KUBECTL_BIN}" get secret my-app-images-secretref-credentials -n "${APP_NS}"
 assert_bucketclaim_ready "my-app-images-secretref" "${APP_NS}"
+
+echo "==> 7. Verifying finalizer cleanup on BucketClaim deletion"
+delete_bucketclaim_and_assert_cleanup "my-app-images" "${APP_NS}" "my-app-images-credentials" "my-v120-test-bucket"
+delete_bucketclaim_and_assert_cleanup "my-app-images-secretref" "${APP_NS}" "my-app-images-secretref-credentials" "my-v120-test-bucket-secretref"
 
 echo ""
 echo "✅ End-to-End Test completed successfully! (cleanup will run automatically)"

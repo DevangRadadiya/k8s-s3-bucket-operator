@@ -31,7 +31,7 @@ It is intentionally staged to keep reliability high while expanding scope.
 ### Wave 1: Reliability and adoption (now to ~8 weeks)
 
 - Improve observability (metrics and dashboard) — **shipped:** controller metrics, `deploy/grafana-dashboard.json`, `docs/MONITORING.md`, metrics Service in manifests.
-- Strengthen CI quality gates and test confidence — **shipped:** `.github/workflows/test.yml` (unit + kind E2E).
+- Strengthen CI quality gates and test confidence — **shipped:** `.github/workflows/test.yml` (unit + kind E2E), including a delete/finalizer cleanup E2E assertion to validate finalizer correctness and teardown behavior.
 - Expand real-world examples and operator runbooks — **shipped:** `examples/` (PostgreSQL backup, uploads, log archival).
 - Add production-grade claim lifecycle visibility — **shipped:** `BucketClaim.status.conditions` (Ready/BucketProvisioned) and improved reconcile status handling.
 - Enable multi-backend readiness for credentials — **shipped:** `BucketClass.minioCredentialSecretRef` for per-class MinIO admin Secrets.

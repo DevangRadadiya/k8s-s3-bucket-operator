@@ -17,6 +17,7 @@ The scripts automate the complete lifecycle:
 - `kind`
 - `kubectl`
 - `make`
+- `python3` (used by the E2E polling helpers)
 
 ### Execute (Kubernetes profile)
 
