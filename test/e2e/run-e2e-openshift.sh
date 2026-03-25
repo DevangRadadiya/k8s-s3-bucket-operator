@@ -66,7 +66,7 @@ echo "==> 3. Creating App Namespace and applying BucketClaim"
 
 echo "==> 4. Waiting for BucketClaim to bind..."
 sleep 3
-for i in {1..20}; do
+for i in {1..60}; do
   PHASE=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
   READY_STATUS=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null || true)
   READY_REASON=$("${KUBECTL_BIN}" get bucketclaim my-app-images -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.reason}}{{end}}{{end}}' 2>/dev/null || true)
@@ -151,7 +151,7 @@ spec:
 EOF
 
 sleep 3
-for i in {1..20}; do
+for i in {1..60}; do
   PHASE=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
   READY_STATUS=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null || true)
   READY_REASON=$("${KUBECTL_BIN}" get bucketclaim my-app-images-secretref -n "${APP_NS}" -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.reason}}{{end}}{{end}}' 2>/dev/null || true)
