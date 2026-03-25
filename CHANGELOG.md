@@ -20,6 +20,8 @@ when versioned releases are published.
 - Security: bump `go` toolchain to **1.25.8** and `github.com/golang-jwt/jwt/v4` to **v4.5.2** to address reported stdlib/jwt CVEs in the container image scan.
 - Ops: increase operator memory limits to reduce `OOMKilled`/`CrashLoopBackOff` flakiness in kind E2E.
 - Reconcile reliability: treat missing `BucketClass` / per-class MinIO credential Secret as retryable (requeue), keep claims `Pending` on transient MinIO errors, and correct MinIO replication destination ARN format to avoid replication configuration failures.
+- Test: add unit coverage + delete/finalizer cleanup E2E assertions, and harden E2E readiness polling for `BucketClaim.status.conditions`.
+- CI/Docs: add local kind image load guidance for E2E testing, and run the OpenShift-profile E2E job on kind (with SCC API fallback).
 
 ### Added
 
