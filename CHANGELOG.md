@@ -19,6 +19,7 @@ when versioned releases are published.
 - **Test** workflow: workflow-level `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`; bump `actions/checkout` to **v5**, `actions/setup-go` to **v6**, `helm/kind-action` to **v1.14.0** to reduce Node 20 deprecation noise.
 - Security: bump `go` toolchain to **1.25.8** and `github.com/golang-jwt/jwt/v4` to **v4.5.2** to address reported stdlib/jwt CVEs in the container image scan.
 - Ops: increase operator memory limits to reduce `OOMKilled`/`CrashLoopBackOff` flakiness in kind E2E.
+- Reconcile reliability: treat missing `BucketClass` / per-class MinIO credential Secret as retryable (requeue), keep claims `Pending` on transient MinIO errors, and correct MinIO replication destination ARN format to avoid replication configuration failures.
 
 ### Added
 

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,34 @@ const (
 )
 
 const maxConditionMessageRunes = 1024
+
+func isTransientMinioError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MinIO/client errors often wrap net.Error; treat timeouts/temporary as transient.
+	if ne, ok := err.(net.Error); ok {
+		return ne.Timeout() || ne.Temporary()
+	}
+	// Fallback: match common transient substrings.
+	msg := strings.ToLower(err.Error())
+	transientSubstrings := []string{
+		"timeout",
+		"temporar",
+		"connection reset",
+		"connection refused",
+		"broken pipe",
+		"i/o timeout",
+		"unexpected eof",
+		"context deadline",
+	}
+	for _, s := range transientSubstrings {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // BucketClaimReconciler reconciles a BucketClaim object
 type BucketClaimReconciler struct {
@@ -111,6 +140,22 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	// If the claim was already successfully provisioned for this generation,
+	// avoid repeating MinIO operations on every reconcile.
+	var readyCond *metav1.Condition
+	for i := range claim.Status.Conditions {
+		if claim.Status.Conditions[i].Type == claimConditionReady {
+			readyCond = &claim.Status.Conditions[i]
+			break
+		}
+	}
+	if readyCond != nil &&
+		readyCond.Status == metav1.ConditionTrue &&
+		claim.Status.Phase == "Bound" &&
+		readyCond.ObservedGeneration == claim.GetGeneration() {
+		return ctrl.Result{}, nil
+	}
+
 	// Fetch class
 	class := &v1alpha1.BucketClass{}
 	if err := r.Get(ctx, types.NamespacedName{Name: claim.Spec.BucketClassName}, class); err != nil {
@@ -118,8 +163,10 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		reconcileErrorsTotal.WithLabelValues("get_bucketclass").Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
 		if apierrors.IsNotFound(err) {
-			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonBucketClassNotFound,
-				fmt.Sprintf("BucketClass %q not found", claim.Spec.BucketClassName))
+			// BucketClass may be created slightly after the claim; treat as retryable.
+			r.noteClaimProvisioning(ctx, req.NamespacedName,
+				fmt.Sprintf("BucketClass %q not found; retrying", claim.Spec.BucketClassName))
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		} else {
 			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonBucketClassLookupFail, err.Error())
 		}
@@ -141,7 +188,10 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		reconcileErrorsTotal.WithLabelValues("minio_credentials").Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
 		if apierrors.IsNotFound(err) {
-			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonMinioCredentialSecretNotFound, err.Error())
+			// Secret might appear after the claim; keep claim in provisioning and retry.
+			r.noteClaimProvisioning(ctx, req.NamespacedName,
+				fmt.Sprintf("MinIO credentials secret not found for BucketClass %q; retrying", class.Name))
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		} else {
 			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonMinioCredentialSecretInvalid, err.Error())
 		}
@@ -169,6 +219,11 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to create bucket in MinIO")
 		reconcileErrorsTotal.WithLabelValues("create_bucket").Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
+		if isTransientMinioError(err) {
+			r.noteClaimProvisioning(ctx, req.NamespacedName,
+				fmt.Sprintf("Transient MinIO error creating bucket %q; retrying: %v", bucketName, err))
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
 		r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonCreateBucketFailed, err.Error())
 		return ctrl.Result{}, err
 	}
@@ -181,6 +236,11 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				log.Error(err, "Failed to set bucket quota")
 				reconcileErrorsTotal.WithLabelValues("set_quota").Inc()
 				reconcileTotal.WithLabelValues("error").Inc()
+				if isTransientMinioError(err) {
+					r.noteClaimProvisioning(ctx, req.NamespacedName,
+						fmt.Sprintf("Transient MinIO error setting quota for bucket %q; retrying: %v", bucketName, err))
+					return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+				}
 				r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonConfigureBucketFailed, err.Error())
 				return ctrl.Result{}, err
 			}
@@ -205,6 +265,11 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error(err, "Failed to set bucket lifecycle")
 			reconcileErrorsTotal.WithLabelValues("set_lifecycle").Inc()
 			reconcileTotal.WithLabelValues("error").Inc()
+			if isTransientMinioError(err) {
+				r.noteClaimProvisioning(ctx, req.NamespacedName,
+					fmt.Sprintf("Transient MinIO error setting lifecycle for bucket %q; retrying: %v", bucketName, err))
+				return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+			}
 			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonConfigureBucketFailed, err.Error())
 			return ctrl.Result{}, err
 		}
@@ -216,7 +281,9 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				{
 					Status: "Enabled",
 					Destination: replication.Destination{
-						Bucket: "arn:aws:s3:::" + claim.Spec.ReplicationTarget.BucketName,
+						// MinIO replication target validation expects object ARN-like destination.
+						// Using `<bucket>/*` avoids "invalid ARN" errors when setting replication.
+						Bucket: "arn:aws:s3:::" + claim.Spec.ReplicationTarget.BucketName + "/*",
 					},
 				},
 			},
@@ -242,6 +309,11 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to grant access")
 		reconcileErrorsTotal.WithLabelValues("grant_access").Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
+		if isTransientMinioError(err) {
+			r.noteClaimProvisioning(ctx, req.NamespacedName,
+				fmt.Sprintf("Transient MinIO error granting access for bucket %q; retrying: %v", bucketName, err))
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
 		r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonGrantAccessFailed, err.Error())
 		return ctrl.Result{}, err
 	}
