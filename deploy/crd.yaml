@@ -26,8 +26,11 @@ spec:
               type: object
               required:
                 - bucketClassName
+                - protocols
               properties:
                 bucketClassName:
+                  type: string
+                existingBucketName:
                   type: string
                 protocols:
                   type: array
@@ -78,6 +81,43 @@ spec:
             status:
               type: object
               properties:
+                bucketReady:
+                  type: boolean
+                conditions:
+                  type: array
+                  description: Current service state of the BucketClaim.
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                      - message
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                        maxLength: 32768
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      type:
+                        type: string
+                        maxLength: 316
                 secretReference:
                   type: object
                   properties:
@@ -91,7 +131,6 @@ spec:
                   type: string
                 phase:
                   type: string
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -132,3 +171,13 @@ spec:
               type: object
               additionalProperties:
                 type: string
+            minioCredentialSecretRef:
+              type: object
+              description: >-
+                Secret (namespace + name) with MinIO admin keys (MINIO_ENDPOINT, MINIO_ACCESS_KEY,
+                MINIO_SECRET_KEY, optional MINIO_USE_SSL). If unset, operator uses its Deployment env.
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string

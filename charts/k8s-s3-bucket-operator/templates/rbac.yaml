@@ -8,6 +8,18 @@ rules:
   - apiGroups: ["objectstorage.k8s.io"]
     resources: ["bucketclaims", "bucketclaims/status", "bucketclasses", "bucketclasses/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
+  {{- if .Values.cosi.enabled }}
+  # COSI provisioner sidecar permissions (objectstorage-sidecar).
+  - apiGroups: ["objectstorage.k8s.io"]
+    resources:
+      - buckets
+      - buckets/status
+      - bucketaccesses
+      - bucketaccesses/status
+      - bucketaccessclasses
+    # The COSI compatibility layer may create/update these resources.
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- end }}
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

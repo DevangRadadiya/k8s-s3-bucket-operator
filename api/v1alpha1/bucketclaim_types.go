@@ -90,6 +90,11 @@ type BucketClaimStatus struct {
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// BucketReady indicates the backend bucket is provisioned and available.
+	// This is primarily used by the COSI compatibility layer.
+	// +optional
+	BucketReady bool `json:"bucketReady,omitempty"`
+
 	// SecretReference points to the Secret containing the bucket credentials.
 	// +optional
 	SecretReference *v1.ObjectReference `json:"secretReference,omitempty"`

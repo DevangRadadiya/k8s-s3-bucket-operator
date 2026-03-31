@@ -22,7 +22,7 @@ It is intentionally staged to keep reliability high while expanding scope.
 
 ### Planned
 
-- COSI-compatible mode
+- COSI-compatible mode (**experimental scaffolding landed:** in-process COSI gRPC driver behind `COSI_ENABLED`, Helm `cosi.enabled`, plus optional COSI CRDs/controller install — see `docs/COSI.md`)
 - AWS S3 backend (first multi-backend target)
 - Ceph RGW and additional providers after AWS maturity
 
@@ -41,7 +41,7 @@ It is intentionally staged to keep reliability high while expanding scope.
 
 - Add COSI-compatible mode while preserving standalone mode
 - Reuse shared backend/business logic
-- Publish migration guidance and known limitations
+- Publish migration guidance and known limitations (**initial doc:** `docs/COSI.md`; **E2E:** COSI section in `test/e2e/run-e2e.sh`)
 
 ### Wave 3: Multi-backend foundation (target ~6-12 months)
 

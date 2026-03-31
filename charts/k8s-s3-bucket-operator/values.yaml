@@ -73,3 +73,36 @@ metrics:
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+# COSI (Container Object Storage Interface) — optional; disabled by default to preserve Wave 1 behavior.
+cosi:
+  enabled: false
+  driverName: k8s-s3-bucket-operator
+  socketDir: /var/lib/cosi
+  socketFile: cosi.sock
+
+  # Provisioner sidecar (talks to the in-process gRPC COSI driver via a shared Unix socket).
+  sidecar:
+    # NOTE: "canary" tag appears to be missing in some environments; use a pinned tag instead.
+    image: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v20240513-v0.1.0-35-gefb3255
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  # Upstream COSI controller (watches BucketClaim and creates Bucket objects).
+  controller:
+    enabled: true
+    image: quay.io/containerobjectstorage/objectstorage-controller:canary
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi

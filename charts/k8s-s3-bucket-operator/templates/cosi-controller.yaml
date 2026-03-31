@@ -1,0 +1,123 @@
+{{- if and .Values.cosi.enabled .Values.cosi.controller.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+rules:
+  - apiGroups: ["objectstorage.k8s.io"]
+    resources: ["bucketclaims", "bucketaccesses", "bucketclaims/status", "bucketaccesses/status"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["objectstorage.k8s.io"]
+    resources: ["buckets"]
+    verbs: ["get", "list", "watch", "update", "create", "delete"]
+  - apiGroups: ["objectstorage.k8s.io"]
+    resources: ["bucketclasses", "bucketaccessclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "serviceaccounts"]
+    verbs: ["list", "get"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+    namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "watch", "list", "delete", "update", "create"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+    namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+  namespace: {{ include "k8s-s3-bucket-operator.namespace" . }}
+  labels:
+    {{- include "k8s-s3-bucket-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cosi-controller
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "k8s-s3-bucket-operator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cosi-controller
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-s3-bucket-operator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cosi-controller
+    spec:
+      serviceAccountName: {{ include "k8s-s3-bucket-operator.fullname" . }}-cosi-controller
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: objectstorage-controller
+          image: {{ .Values.cosi.controller.image }}
+          imagePullPolicy: {{ .Values.cosi.controller.imagePullPolicy }}
+          args:
+            - "--v=3"
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.cosi.controller.resources | nindent 12 }}
+{{- end }}

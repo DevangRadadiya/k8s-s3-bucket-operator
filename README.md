@@ -257,9 +257,11 @@ Then patch `minio-credentials` in namespace `k8s-s3-bucket-operator` the same wa
 
 ### In progress / planned
 
-- **Hybrid mode:** Standalone + COSI-compatible mode
-- **Backends:** AWS S3 first, then Ceph RGW and additional providers based on demand
-- **Advanced portability:** staged multi-backend rollout from a shared backend abstraction
+- **Hybrid mode:** Standalone + COSI-compatible mode (experimental, see [`docs/COSI.md`](docs/COSI.md)).
+  - Current COSI integration speaks `objectstorage.k8s.io/v1alpha1` and uses an internal GVK/JSONPath abstraction (`internal/cosi/kubecompat.go`) plus JSONPath constants in the E2E scripts so we can move to a future GA version with a focused diff.
+  - COSI mode is **opt-in** and Wave 1 standalone behavior remains the default.
+- **Backends:** AWS S3 first, then Ceph RGW and additional providers based on demand.
+- **Advanced portability:** staged multi-backend rollout from a shared backend abstraction.
 
 See:
 

@@ -7,6 +7,12 @@ APP_NS="my-app"
 MINIO_NS="minio-ns"
 OPERATOR_IMAGE="${OPERATOR_IMAGE:-}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-120s}"
+COSI_WAIT_TIMEOUT="${COSI_WAIT_TIMEOUT:-300s}"
+
+# COSI status JSONPath helpers (keep in one place for easier API evolution).
+COSI_JSONPATH_BUCKETCLAIM_READY=".status.bucketReady"
+COSI_JSONPATH_BUCKET_READY=".status.bucketReady"
+COSI_JSONPATH_BUCKETACCESS_GRANTED=".status.accessGranted"
 
 cleanup() {
   if [ "${KEEP_E2E_ARTIFACTS:-}" = "1" ]; then
@@ -17,8 +23,84 @@ cleanup() {
   "${KUBECTL_BIN}" delete ns "${MINIO_NS}" --ignore-not-found >/dev/null 2>&1 || true
   "${KUBECTL_BIN}" delete ns "${OPERATOR_NS}" --ignore-not-found >/dev/null 2>&1 || true
   "${KUBECTL_BIN}" delete crd bucketclaims.objectstorage.k8s.io bucketclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete crd buckets.objectstorage.k8s.io bucketaccesses.objectstorage.k8s.io bucketaccessclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete clusterrole objectstorage-controller-role --ignore-not-found >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete clusterrolebinding objectstorage-controller --ignore-not-found >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+patch_operator_for_cosi() {
+  echo "==> Patching operator Deployment for COSI (driver env + sidecar + RBAC)"
+  "${KUBECTL_BIN}" apply -f deploy/cosi/controller.yaml
+
+  "${KUBECTL_BIN}" patch clusterrole k8s-s3-bucket-operator-role --type=json -p='[
+    {"op":"add","path":"/rules/-","value":{
+      "apiGroups":["objectstorage.k8s.io"],
+      "resources":["buckets","buckets/status","bucketaccesses","bucketaccesses/status","bucketaccessclasses"],
+      "verbs":["get","list","watch","create","update","patch","delete"]
+    }}
+  ]'
+
+  "${KUBECTL_BIN}" get deploy k8s-s3-bucket-operator -n "${OPERATOR_NS}" -o json | python3 -c 'import json,sys,os; d=json.load(sys.stdin); tpl=d.setdefault("spec",{}).setdefault("template",{}); spec=tpl.setdefault("spec",{});
+vols=spec.setdefault("volumes",[]);
+cosi_vol={"name":"cosi-socket","emptyDir":{}};
+vols[:] = [v for v in vols if v.get("name")!="cosi-socket"]; vols.append(cosi_vol);
+containers=spec.setdefault("containers",[]);
+op=next(c for c in containers if c.get("name")=="operator");
+vm=op.setdefault("volumeMounts",[]);
+vm[:] = [m for m in vm if m.get("name")!="cosi-socket"]; vm.append({"name":"cosi-socket","mountPath":"/var/lib/cosi"});
+env=op.setdefault("env",[]);
+
+def upsert_env(name,value):
+  for e in env:
+    if e.get("name")==name:
+      e["value"]=value
+      return
+  env.append({"name":name,"value":value})
+
+upsert_env("COSI_ENABLED","true");
+upsert_env("COSI_DRIVER_NAME","k8s-s3-bucket-operator");
+upsert_env("COSI_SOCKET_PATH","/var/lib/cosi/cosi.sock");
+sidecar_image=os.environ.get("COSI_SIDECAR_IMAGE","gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v20240513-v0.1.0-35-gefb3255");
+sidecar_def={"name":"objectstorage-sidecar","image":sidecar_image,"imagePullPolicy":"IfNotPresent","args":["--driver-addr=unix:///var/lib/cosi/cosi.sock","--v=3"],"securityContext":{"allowPrivilegeEscalation":False,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":True},"volumeMounts":[{"name":"cosi-socket","mountPath":"/var/lib/cosi"}],"resources":{"requests":{"cpu":"25m","memory":"64Mi"},"limits":{"cpu":"200m","memory":"256Mi"}}};
+sidecar=next((c for c in containers if c.get("name")=="objectstorage-sidecar"), None);
+if sidecar is None:
+  containers.append(sidecar_def);
+else:
+  sidecar.update(sidecar_def);
+json.dump(d, sys.stdout)
+' | "${KUBECTL_BIN}" apply -f -
+}
+
+wait_jsonpath_true() {
+  local kind="$1"
+  local namespace="$2"
+  local name="$3"
+  local jsonpath="$4"
+  local timeout_seconds="${5:-240}"
+  local deadline=$((SECONDS+timeout_seconds))
+
+  while [ $SECONDS -lt $deadline ]; do
+    local v
+    if [ -n "${namespace}" ]; then
+      v="$("${KUBECTL_BIN}" get "${kind}" "${name}" -n "${namespace}" -o "jsonpath={${jsonpath}}" 2>/dev/null || true)"
+    else
+      v="$("${KUBECTL_BIN}" get "${kind}" "${name}" -o "jsonpath={${jsonpath}}" 2>/dev/null || true)"
+    fi
+    if [ "${v}" = "true" ]; then
+      return 0
+    fi
+    sleep 3
+  done
+
+  echo "Error: timed out waiting for ${kind}/${name} (${jsonpath})"
+  return 1
+}
+
+assert_minio_user_exists() {
+  local access_key="$1"
+  "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- mc admin user info myminio "${access_key}" >/dev/null 2>&1
+}
 
 assert_bucketclaim_ready() {
   local claim_name="$1"
@@ -222,6 +304,101 @@ assert_bucketclaim_ready "my-app-images-secretref" "${APP_NS}"
 echo "==> 7. Verifying finalizer cleanup on BucketClaim deletion"
 delete_bucketclaim_and_assert_cleanup "my-app-images" "${APP_NS}" "my-app-images-credentials" "my-v120-test-bucket"
 delete_bucketclaim_and_assert_cleanup "my-app-images-secretref" "${APP_NS}" "my-app-images-secretref-credentials" "my-v120-test-bucket-secretref"
+
+echo ""
+echo "==> 8. COSI: CRDs + controller + driver wiring + access lifecycle"
+"${KUBECTL_BIN}" apply -k deploy/cosi
+patch_operator_for_cosi
+"${KUBECTL_BIN}" rollout status deployment/k8s-s3-bucket-operator -n "${OPERATOR_NS}" --timeout="${COSI_WAIT_TIMEOUT}"
+"${KUBECTL_BIN}" rollout status deployment/objectstorage-controller -n "${OPERATOR_NS}" --timeout="${COSI_WAIT_TIMEOUT}"
+
+COSI_BUCKET_NAME="cosi-e2e-bucket"
+COSI_BUCKET_DIR="/data/${COSI_BUCKET_NAME}"
+
+"${KUBECTL_BIN}" apply -f - <<EOF
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClass
+metadata:
+  name: cosi-minio-standard
+driverName: k8s-s3-bucket-operator
+deletionPolicy: Delete
+parameters:
+  region: "us-east-1"
+  bucketName: "${COSI_BUCKET_NAME}"
+---
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketAccessClass
+metadata:
+  name: cosi-minio-keys
+driverName: k8s-s3-bucket-operator
+authenticationType: Key
+---
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: cosi-app-bucket
+  namespace: ${APP_NS}
+spec:
+  bucketClassName: cosi-minio-standard
+  protocols:
+    - S3
+---
+apiVersion: objectstorage.k8s.io/v1alpha1
+kind: BucketAccess
+metadata:
+  name: cosi-app-access
+  namespace: ${APP_NS}
+spec:
+  bucketAccessClassName: cosi-minio-keys
+  bucketClaimName: cosi-app-bucket
+  credentialsSecretName: cosi-app-creds
+  protocol: S3
+EOF
+
+wait_jsonpath_true "bucketclaim" "${APP_NS}" "cosi-app-bucket" "${COSI_JSONPATH_BUCKETCLAIM_READY}" 300
+
+BUCKET_OBJ="$("${KUBECTL_BIN}" get bucketclaim cosi-app-bucket -n "${APP_NS}" -o jsonpath="{.status.bucketName}")"
+if [ -z "${BUCKET_OBJ}" ]; then
+  echo "Error: COSI BucketClaim did not populate status.bucketName"
+  exit 1
+fi
+
+wait_jsonpath_true "bucket" "" "${BUCKET_OBJ}" "${COSI_JSONPATH_BUCKET_READY}" 300
+
+wait_jsonpath_true "bucketaccess" "${APP_NS}" "cosi-app-access" "${COSI_JSONPATH_BUCKETACCESS_GRANTED}" 300
+"${KUBECTL_BIN}" get secret cosi-app-creds -n "${APP_NS}"
+
+ACCESS_KEY="$("${KUBECTL_BIN}" get secret cosi-app-creds -n "${APP_NS}" -o jsonpath='{.data.BucketInfo}' | python3 -c 'import base64,json,sys; raw=sys.stdin.read().strip();
+if not raw: raise SystemExit("missing .data.BucketInfo")
+obj=json.loads(base64.b64decode(raw).decode("utf-8"))
+print(obj["spec"]["s3"]["accessKeyID"])')"
+
+"${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- mc alias set myminio http://localhost:9000 minioadmin minioadmin >/dev/null
+if ! assert_minio_user_exists "${ACCESS_KEY}"; then
+  echo "Error: expected MinIO user ${ACCESS_KEY} to exist after BucketAccess grant"
+  exit 1
+fi
+
+if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKET_DIR}" >/dev/null 2>&1; then
+  echo "Error: expected MinIO bucket dir ${COSI_BUCKET_DIR} to exist"
+  exit 1
+fi
+
+echo "==> 8a. Deleting BucketAccess should revoke credentials but keep bucket"
+"${KUBECTL_BIN}" delete bucketaccess cosi-app-access -n "${APP_NS}" --wait=true
+wait_secret_gone "cosi-app-creds" "${APP_NS}" 240
+if assert_minio_user_exists "${ACCESS_KEY}"; then
+  echo "Error: expected MinIO user ${ACCESS_KEY} to be removed after BucketAccess deletion"
+  exit 1
+fi
+if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKET_DIR}" >/dev/null 2>&1; then
+  echo "Error: expected bucket to still exist after BucketAccess deletion"
+  exit 1
+fi
+
+echo "==> 8b. Deleting BucketClaim should delete bucket when BucketClass deletionPolicy=Delete"
+"${KUBECTL_BIN}" delete bucketclaim cosi-app-bucket -n "${APP_NS}" --wait=true
+wait_bucket_gone "${COSI_BUCKET_NAME}" 300
 
 echo ""
 echo "✅ OpenShift End-to-End Test completed successfully! (cleanup will run automatically)"
