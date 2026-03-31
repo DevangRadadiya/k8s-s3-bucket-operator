@@ -8,10 +8,15 @@ when versioned releases are published.
 
 ## [Unreleased]
 
+- TBD
+
+## [v0.2.0] - 2026-03-31
+
 ### Added
 
 - `BucketClaim` **status.conditions**: standard **Ready** condition with reasons such as `Provisioning`, `BucketProvisioned`, `BucketClassNotFound`, `UnsupportedDriver`, and failure reasons from reconcile stages; **status.phase** uses **Pending** while provisioning and **Failed** on errors.
-- `BucketClass` **minioCredentialSecretRef** (namespace + name): per-class MinIO admin Secret; when unset, the operator uses **MINIO_*** from its own Deployment env. Secret keys match the operator `minio-credentials` Secret (with short aliases documented in the user guide). Helm chart **0.1.4** packages both CRD schema updates.
+- `BucketClass` **minioCredentialSecretRef** (namespace + name): per-class MinIO admin Secret; when unset, the operator uses **MINIO_*** from its own Deployment env. Secret keys match the operator `minio-credentials` Secret (with short aliases documented in the user guide). Helm chart **0.2.0** packages both CRD schema updates.
+- **COSI (experimental)**: in-process COSI gRPC driver behind `COSI_ENABLED` / `--cosi-enabled`, Helm `cosi.enabled`, optional **COSI CRDs** + **objectstorage-controller** install (`deploy/cosi/`, `charts/.../crds/cosi/`, `charts/.../templates/cosi-controller.yaml`), and E2E coverage for bucket ready + access grant/revoke + claim deletion (`test/e2e/run-e2e*.sh`).
 
 ### Fixed
 

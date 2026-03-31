@@ -19,6 +19,12 @@ The scripts automate the complete lifecycle:
 - `make`
 - `python3` (used by the E2E polling helpers)
 
+### Environment tweaks
+
+- `WAIT_TIMEOUT` — default `120s`; used for most `kubectl rollout status` waits.
+- `COSI_WAIT_TIMEOUT` — default `300s`; used only after COSI wiring (operator + `objectstorage-controller`), since extra containers/images may need longer pulls.
+- `KEEP_E2E_ARTIFACTS=1` — skip namespace/CRD cleanup on exit (debugging).
+
 ### Execute (Kubernetes profile)
 
 From the project root, run:

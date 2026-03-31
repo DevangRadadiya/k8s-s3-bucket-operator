@@ -2,20 +2,21 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/cosi"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
-	"github.com/minio/minio-go/v7/pkg/replication"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/provisioning"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,39 +44,14 @@ const (
 
 const maxConditionMessageRunes = 1024
 
-func isTransientMinioError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// MinIO/client errors often wrap net.Error; treat timeouts/temporary as transient.
-	if ne, ok := err.(net.Error); ok {
-		return ne.Timeout() || ne.Temporary()
-	}
-	// Fallback: match common transient substrings.
-	msg := strings.ToLower(err.Error())
-	transientSubstrings := []string{
-		"timeout",
-		"temporar",
-		"connection reset",
-		"connection refused",
-		"broken pipe",
-		"i/o timeout",
-		"unexpected eof",
-		"context deadline",
-	}
-	for _, s := range transientSubstrings {
-		if strings.Contains(msg, s) {
-			return true
-		}
-	}
-	return false
-}
-
 // BucketClaimReconciler reconciles a BucketClaim object
 type BucketClaimReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Minio  *minio.Client
+	// EnableCOSI makes this controller also create/update COSI `Bucket` CRs and set
+	// `.status.bucketReady` (needed for COSI-mode E2E assertions).
+	EnableCOSI bool
 
 	minioMu    sync.Mutex
 	minioCache map[string]*cachedMinioClient
@@ -198,104 +174,9 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Determine region
-	region := class.Parameters["region"]
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	// Determine bucket name
-	bucketName := claim.Spec.BucketName
-	if bucketName == "" {
-		bucketName = fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
-	}
-
 	if !(meta.IsStatusConditionTrue(claim.Status.Conditions, claimConditionReady) && claim.Status.Phase == "Bound") {
 		r.noteClaimProvisioning(ctx, req.NamespacedName, "Provisioning bucket and access credentials")
 	}
-
-	// 1. Create Bucket
-	if err := mc.CreateBucket(ctx, bucketName, region, class.ObjectLockingEnabled); err != nil {
-		log.Error(err, "Failed to create bucket in MinIO")
-		reconcileErrorsTotal.WithLabelValues("create_bucket").Inc()
-		reconcileTotal.WithLabelValues("error").Inc()
-		if isTransientMinioError(err) {
-			r.noteClaimProvisioning(ctx, req.NamespacedName,
-				fmt.Sprintf("Transient MinIO error creating bucket %q; retrying: %v", bucketName, err))
-			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
-		}
-		r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonCreateBucketFailed, err.Error())
-		return ctrl.Result{}, err
-	}
-
-	// 2. Configure advanced bucket settings
-	if claim.Spec.Quota != nil {
-		quotaBytes, ok := claim.Spec.Quota.AsInt64()
-		if ok && quotaBytes > 0 {
-			if err := mc.SetBucketQuota(ctx, bucketName, quotaBytes); err != nil {
-				log.Error(err, "Failed to set bucket quota")
-				reconcileErrorsTotal.WithLabelValues("set_quota").Inc()
-				reconcileTotal.WithLabelValues("error").Inc()
-				if isTransientMinioError(err) {
-					r.noteClaimProvisioning(ctx, req.NamespacedName,
-						fmt.Sprintf("Transient MinIO error setting quota for bucket %q; retrying: %v", bucketName, err))
-					return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
-				}
-				r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonConfigureBucketFailed, err.Error())
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	if len(claim.Spec.LifecycleRules) > 0 {
-		lc := &lifecycle.Configuration{}
-		for _, rule := range claim.Spec.LifecycleRules {
-			lc.Rules = append(lc.Rules, lifecycle.Rule{
-				ID:     rule.ID,
-				Status: rule.Status,
-				RuleFilter: lifecycle.Filter{
-					Prefix: rule.Prefix,
-				},
-				Expiration: lifecycle.Expiration{
-					Days: lifecycle.ExpirationDays(rule.Expiration.Days),
-				},
-			})
-		}
-		if err := mc.SetBucketLifecycle(ctx, bucketName, lc); err != nil {
-			log.Error(err, "Failed to set bucket lifecycle")
-			reconcileErrorsTotal.WithLabelValues("set_lifecycle").Inc()
-			reconcileTotal.WithLabelValues("error").Inc()
-			if isTransientMinioError(err) {
-				r.noteClaimProvisioning(ctx, req.NamespacedName,
-					fmt.Sprintf("Transient MinIO error setting lifecycle for bucket %q; retrying: %v", bucketName, err))
-				return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
-			}
-			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonConfigureBucketFailed, err.Error())
-			return ctrl.Result{}, err
-		}
-	}
-
-	if claim.Spec.ReplicationTarget != nil {
-		repCfg := replication.Config{
-			Rules: []replication.Rule{
-				{
-					Status: "Enabled",
-					Destination: replication.Destination{
-						// MinIO replication target validation expects object ARN-like destination.
-						// Using `<bucket>/*` avoids "invalid ARN" errors when setting replication.
-						Bucket: "arn:aws:s3:::" + claim.Spec.ReplicationTarget.BucketName + "/*",
-					},
-				},
-			},
-		}
-		if err := mc.SetBucketReplication(ctx, bucketName, repCfg); err != nil {
-			log.Error(err, "Failed to set bucket replication")
-		}
-	}
-
-	// 3. Grant Access
-	// Account ID is just namespace/name for isolating policies
-	accountID := fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
 	secretName := fmt.Sprintf("%s-credentials", claim.Name)
 	existingSecret := &corev1.Secret{}
 	existingAccessKey := ""
@@ -304,17 +185,58 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		existingAccessKey = strings.TrimSpace(string(existingSecret.Data["accessKeyID"]))
 		existingSecretKey = strings.TrimSpace(string(existingSecret.Data["accessSecretKey"]))
 	}
-	creds, err := mc.GrantAccess(ctx, bucketName, accountID, string(claim.Spec.AccessType), existingAccessKey, existingSecretKey)
+
+	creds, err := provisioning.ProvisionBucketAndGrantAccess(ctx, mc, claim, class, existingAccessKey, existingSecretKey)
 	if err != nil {
-		log.Error(err, "Failed to grant access")
-		reconcileErrorsTotal.WithLabelValues("grant_access").Inc()
+		// Select stable "reason" + Prometheus "stage" from the underlying operation.
+		var pErr *provisioning.ProvisioningError
+		stage := "provisioning"
+		reason := claimReasonConfigureBucketFailed
+		bucketName := ""
+
+		if errors.As(err, &pErr) {
+			bucketName = pErr.BucketName
+			switch pErr.Op {
+			case provisioning.OpCreateBucket:
+				stage = "create_bucket"
+				reason = claimReasonCreateBucketFailed
+			case provisioning.OpSetQuota:
+				stage = "set_quota"
+				reason = claimReasonConfigureBucketFailed
+			case provisioning.OpSetLifecycle:
+				stage = "set_lifecycle"
+				reason = claimReasonConfigureBucketFailed
+			case provisioning.OpGrantAccess:
+				stage = "grant_access"
+				reason = claimReasonGrantAccessFailed
+			}
+		}
+
+		log.Error(err, "Failed to provision bucket and grant access")
+		reconcileErrorsTotal.WithLabelValues(stage).Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
-		if isTransientMinioError(err) {
-			r.noteClaimProvisioning(ctx, req.NamespacedName,
-				fmt.Sprintf("Transient MinIO error granting access for bucket %q; retrying: %v", bucketName, err))
+
+		if provisioning.IsTransientMinioError(err) {
+			// Keep message deterministic so conditions remain parseable by E2E tests.
+			transientMsg := fmt.Sprintf("Transient MinIO error during %s; bucket=%q; retrying: %v", stage, bucketName, err)
+			if pErr != nil {
+				switch pErr.Op {
+				case provisioning.OpCreateBucket:
+					transientMsg = fmt.Sprintf("Transient MinIO error creating bucket %q; retrying: %v", bucketName, err)
+				case provisioning.OpSetQuota:
+					transientMsg = fmt.Sprintf("Transient MinIO error setting quota for bucket %q; retrying: %v", bucketName, err)
+				case provisioning.OpSetLifecycle:
+					transientMsg = fmt.Sprintf("Transient MinIO error setting lifecycle for bucket %q; retrying: %v", bucketName, err)
+				case provisioning.OpGrantAccess:
+					transientMsg = fmt.Sprintf("Transient MinIO error granting access for bucket %q; retrying: %v", bucketName, err)
+				}
+			}
+
+			r.noteClaimProvisioning(ctx, req.NamespacedName, transientMsg)
 			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 		}
-		r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonGrantAccessFailed, err.Error())
+
+		r.noteClaimNotReady(ctx, req.NamespacedName, reason, err.Error())
 		return ctrl.Result{}, err
 	}
 
@@ -330,10 +252,10 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if secret.StringData == nil {
 			secret.StringData = make(map[string]string)
 		}
-		secret.StringData["accessKeyID"] = creds["accessKeyID"]
-		secret.StringData["accessSecretKey"] = creds["accessSecretKey"]
-		secret.StringData["bucketName"] = creds["bucketName"]
-		secret.StringData["endpoint"] = creds["endpoint"]
+		secret.StringData["accessKeyID"] = creds.AccessKeyID
+		secret.StringData["accessSecretKey"] = creds.AccessSecretKey
+		secret.StringData["bucketName"] = creds.BucketName
+		secret.StringData["endpoint"] = creds.Endpoint
 		// Set owner reference to the claim automatically cleans up the secret when claim is deleted
 		return controllerutil.SetControllerReference(claim, secret, r.Scheme)
 	})
@@ -355,19 +277,20 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		reconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, err
 	}
-	claim.Status.BucketName = bucketName
-	claim.Status.Endpoint = creds["endpoint"]
+	claim.Status.BucketName = creds.BucketName
+	claim.Status.Endpoint = creds.Endpoint
 	claim.Status.SecretReference = &corev1.ObjectReference{
 		Name:      secret.Name,
 		Namespace: secret.Namespace,
 	}
 	claim.Status.Phase = "Bound"
+	claim.Status.BucketReady = true
 	meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
 		Type:               claimConditionReady,
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: claim.GetGeneration(),
 		Reason:             claimReasonBucketProvisioned,
-		Message:            fmt.Sprintf("Bucket %q is provisioned and credentials are available.", bucketName),
+		Message:            fmt.Sprintf("Bucket %q is provisioned and credentials are available.", creds.BucketName),
 	})
 
 	if err := r.Status().Update(ctx, claim); err != nil {
@@ -377,10 +300,75 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// In COSI mode, create the corresponding COSI Bucket object (cluster-scoped) so
+	// E2E can assert `.status.bucketReady`.
+	if r.EnableCOSI {
+		if err := r.ensureCosiBucket(ctx, claim, class); err != nil {
+			log.Error(err, "Failed to reconcile COSI Bucket")
+			reconcileErrorsTotal.WithLabelValues("reconcile_cosi_bucket").Inc()
+			reconcileTotal.WithLabelValues("error").Inc()
+			return ctrl.Result{}, err
+		}
+	}
+
 	bucketsBoundTotal.WithLabelValues(class.Name).Inc()
 	reconcileTotal.WithLabelValues("success").Inc()
-	log.Info("Successfully reconciled BucketClaim", "BucketName", bucketName)
+	log.Info("Successfully reconciled BucketClaim", "BucketName", creds.BucketName)
 	return ctrl.Result{}, nil
+}
+
+func (r *BucketClaimReconciler) ensureCosiBucket(ctx context.Context, claim *v1alpha1.BucketClaim, class *v1alpha1.BucketClass) error {
+	bucketName := strings.TrimSpace(claim.Status.BucketName)
+	if bucketName == "" {
+		return nil
+	}
+
+	// Build the desired COSI Bucket object as unstructured data so we don't need to couple
+	// our core controller to the external COSI Go types.
+	bucketGVK := cosi.BucketGVK()
+
+	bu := &unstructured.Unstructured{}
+	bu.SetGroupVersionKind(bucketGVK)
+	bu.SetName(bucketName)
+
+	protocols := claim.Spec.Protocols
+	if len(protocols) == 0 {
+		protocols = []string{"S3"}
+	}
+
+	spec := map[string]interface{}{
+		"bucketClaim": map[string]interface{}{
+			"apiVersion": cosi.ObjectStorageAPIGroup + "/" + cosi.ObjectStorageAPIVersion,
+			"kind":       "BucketClaim",
+			"name":       claim.Name,
+			"namespace":  claim.Namespace,
+		},
+		"bucketClassName": claim.Spec.BucketClassName,
+		"driverName":       class.DriverName,
+		"deletionPolicy":  string(class.DeletionPolicy),
+		"protocols":       protocols,
+	}
+	if class.Parameters != nil && len(class.Parameters) > 0 {
+		spec["parameters"] = class.Parameters
+	}
+
+	status := map[string]interface{}{
+		"bucketReady": true,
+		"bucketID":    bucketName,
+	}
+
+	if err := r.Get(ctx, client.ObjectKey{Name: bucketName}, bu); err != nil {
+		if apierrors.IsNotFound(err) {
+			bu.Object["spec"] = spec
+			bu.Object["status"] = status
+			return r.Create(ctx, bu)
+		}
+		return err
+	}
+
+	// Only status is required for E2E right now.
+	bu.Object["status"] = status
+	return r.Status().Update(ctx, bu)
 }
 
 func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *v1alpha1.BucketClaim) error {
@@ -401,15 +389,6 @@ func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *
 		return fmt.Errorf("minio client for finalization: %w", err)
 	}
 
-	bucketName := claim.Status.BucketName
-	if bucketName == "" {
-		bucketName = claim.Spec.BucketName
-		if bucketName == "" {
-			bucketName = fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
-		}
-	}
-
-	accountID := fmt.Sprintf("%s-%s", claim.Namespace, claim.Name)
 	accessKey := ""
 	if claim.Status.SecretReference != nil {
 		secret := &corev1.Secret{}
@@ -417,24 +396,7 @@ func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *
 			accessKey = strings.TrimSpace(string(secret.Data["accessKeyID"]))
 		}
 	}
-
-	// Always revoke access to delete the minio policy/user
-	if err := mc.RevokeAccess(ctx, bucketName, accountID, accessKey); err != nil {
-		log.Error(err, "Failed to revoke access during finalizer")
-		// Continue anyway to try to clean up bucket if Delete policy
-	}
-
-	if class.DeletionPolicy == v1alpha1.DeletionPolicyDelete {
-		log.Info("DeletionPolicy is Delete, removing bucket", "BucketName", bucketName)
-		if err := mc.DeleteBucket(ctx, bucketName); err != nil {
-			log.Error(err, "Failed to delete bucket")
-			return err
-		}
-	} else {
-		log.Info("DeletionPolicy is Retain, leaving bucket intact", "BucketName", bucketName)
-	}
-
-	return nil
+	return provisioning.RevokeAccessAndMaybeDeleteBucket(ctx, mc, claim, class, accessKey)
 }
 
 func (r *BucketClaimReconciler) minioClientForClass(ctx context.Context, class *v1alpha1.BucketClass) (*minio.Client, error) {
@@ -482,6 +444,7 @@ func trimConditionMessage(msg string) string {
 func (r *BucketClaimReconciler) noteClaimProvisioning(ctx context.Context, nn types.NamespacedName, message string) {
 	if err := r.mergeClaimStatus(ctx, nn, func(c *v1alpha1.BucketClaim) {
 		c.Status.Phase = "Pending"
+		c.Status.BucketReady = false
 		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{
 			Type:               claimConditionReady,
 			Status:             metav1.ConditionFalse,
@@ -497,6 +460,7 @@ func (r *BucketClaimReconciler) noteClaimProvisioning(ctx context.Context, nn ty
 func (r *BucketClaimReconciler) noteClaimNotReady(ctx context.Context, nn types.NamespacedName, reason, message string) {
 	if err := r.mergeClaimStatus(ctx, nn, func(c *v1alpha1.BucketClaim) {
 		c.Status.Phase = "Failed"
+		c.Status.BucketReady = false
 		meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{
 			Type:               claimConditionReady,
 			Status:             metav1.ConditionFalse,

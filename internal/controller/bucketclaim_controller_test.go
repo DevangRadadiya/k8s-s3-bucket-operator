@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1alpha1 "github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/provisioning"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,13 +41,13 @@ func TestTrimConditionMessage_Truncates(t *testing.T) {
 }
 
 func TestIsTransientMinioError(t *testing.T) {
-	if !isTransientMinioError(tempNetErr{}) {
+	if !provisioning.IsTransientMinioError(tempNetErr{}) {
 		t.Fatalf("expected net.Error timeout to be treated as transient")
 	}
-	if !isTransientMinioError(errors.New("connection refused")) {
+	if !provisioning.IsTransientMinioError(errors.New("connection refused")) {
 		t.Fatalf("expected substring-based transient detection to return true")
 	}
-	if isTransientMinioError(errors.New("permission denied")) {
+	if provisioning.IsTransientMinioError(errors.New("permission denied")) {
 		t.Fatalf("expected non-transient error to return false")
 	}
 }

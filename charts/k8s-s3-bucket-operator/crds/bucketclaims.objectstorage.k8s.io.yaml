@@ -26,8 +26,11 @@ spec:
               type: object
               required:
                 - bucketClassName
+                - protocols
               properties:
                 bucketClassName:
+                  type: string
+                existingBucketName:
                   type: string
                 protocols:
                   type: array
@@ -78,6 +81,8 @@ spec:
             status:
               type: object
               properties:
+                bucketReady:
+                  type: boolean
                 conditions:
                   type: array
                   description: Current service state of the BucketClaim.

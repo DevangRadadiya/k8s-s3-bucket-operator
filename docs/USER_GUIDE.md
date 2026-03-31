@@ -4,18 +4,21 @@ This guide describes how to install the operator, configure **BucketClass** and 
 
 For a minimal install path, see the [README](../README.md) **Quick start**. For quick Q&A, see [`FAQ.md`](FAQ.md).
 
+If you want **COSI** (`Bucket` / `BucketAccess`) in addition to the Wave 1 flow, see [`COSI.md`](COSI.md) (experimental).
+
 ---
 
 ## Table of contents
 
 1. [Concepts](#concepts)
 2. [Installation](#installation)
-3. [BucketClass reference](#bucketclass-reference)
-4. [BucketClaim reference](#bucketclaim-reference)
-5. [Secret created for your app](#secret-created-for-your-app)
-6. [Enterprise features (details)](#enterprise-features-details)
-7. [Verification with MinIO Client (`mc`)](#verification-with-minio-client-mc)
-8. [Troubleshooting](#troubleshooting)
+3. [COSI mode (optional, experimental)](#cosi-mode-optional-experimental)
+4. [BucketClass reference](#bucketclass-reference)
+5. [BucketClaim reference](#bucketclaim-reference)
+6. [Secret created for your app](#secret-created-for-your-app)
+7. [Enterprise features (details)](#enterprise-features-details)
+8. [Verification with MinIO Client (`mc`)](#verification-with-minio-client-mc)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -37,6 +40,14 @@ By default the operator talks to MinIO using environment variables on the deploy
 - Kubernetes 1.25+ (or OpenShift 4.12+)
 - A reachable MinIO (or S3-compatible) endpoint
 - `kubectl` configured for your cluster
+
+## COSI mode (optional, experimental)
+
+COSI support is **disabled by default** to keep Wave 1 behavior unchanged.
+
+- Start here: [`COSI.md`](COSI.md)
+- Helm: set `cosi.enabled=true` (see `charts/k8s-s3-bucket-operator/values.yaml`)
+- Raw YAML bundle: `kubectl apply -k deploy/cosi/` (CRDs + upstream controller)
 
 ### Deploy CRDs and operator
 

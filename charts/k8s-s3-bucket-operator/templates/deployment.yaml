@@ -39,7 +39,20 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.cosi.enabled }}
+          volumeMounts:
+            - name: cosi-socket
+              mountPath: {{ .Values.cosi.socketDir }}
+          {{- end }}
           env:
+            {{- if .Values.cosi.enabled }}
+            - name: COSI_ENABLED
+              value: "true"
+            - name: COSI_DRIVER_NAME
+              value: {{ .Values.cosi.driverName | quote }}
+            - name: COSI_SOCKET_PATH
+              value: {{ printf "%s/%s" .Values.cosi.socketDir .Values.cosi.socketFile | quote }}
+            {{- end }}
             - name: MINIO_ENDPOINT
               valueFrom:
                 secretKeyRef:
@@ -62,3 +75,25 @@ spec:
                   key: MINIO_USE_SSL
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.cosi.enabled }}
+        - name: objectstorage-sidecar
+          image: {{ .Values.cosi.sidecar.image }}
+          imagePullPolicy: {{ .Values.cosi.sidecar.imagePullPolicy }}
+          args:
+            - "--driver-addr=unix://{{ .Values.cosi.socketDir }}/{{ .Values.cosi.socketFile }}"
+            - "--v=3"
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: cosi-socket
+              mountPath: {{ .Values.cosi.socketDir }}
+          resources:
+            {{- toYaml .Values.cosi.sidecar.resources | nindent 12 }}
+        {{- end }}
+      {{- if .Values.cosi.enabled }}
+      volumes:
+        - name: cosi-socket
+          emptyDir: {}
+      {{- end }}
