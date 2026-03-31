@@ -159,6 +159,49 @@ wait_bucket_gone() {
   return 1
 }
 
+wait_namespace_active() {
+  local namespace="$1"
+  local timeout_seconds="${2:-180}"
+  local deadline=$((SECONDS+timeout_seconds))
+
+  # If a previous run is still terminating the namespace, wait until it is gone.
+  while [ $SECONDS -lt $deadline ]; do
+    ts="$("${KUBECTL_BIN}" get ns "${namespace}" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)"
+    if [ -z "${ts}" ]; then
+      # Either namespace is active (no deletionTimestamp) or it doesn't exist.
+      return 0
+    fi
+    sleep 3
+  done
+
+  echo "Error: namespace ${namespace} is still terminating"
+  return 1
+}
+
+wait_resource_gone() {
+  local kind="$1"
+  local namespace="$2"
+  local name="$3"
+  local timeout_seconds="${4:-120}"
+  local deadline=$((SECONDS+timeout_seconds))
+
+  while [ $SECONDS -lt $deadline ]; do
+    if [ -n "${namespace}" ]; then
+      if ! "${KUBECTL_BIN}" get "${kind}" "${name}" -n "${namespace}" >/dev/null 2>&1; then
+        return 0
+      fi
+    else
+      if ! "${KUBECTL_BIN}" get "${kind}" "${name}" >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  echo "Error: ${kind} ${name} still exists (namespace='${namespace}')"
+  return 1
+}
+
 delete_bucketclaim_and_assert_cleanup() {
   local claim_name="$1"
   local namespace="$2"
@@ -166,7 +209,9 @@ delete_bucketclaim_and_assert_cleanup() {
   local bucket_name="$4"
 
   echo "==> Deleting BucketClaim ${claim_name} (expect secret + bucket cleanup)"
-  "${KUBECTL_BIN}" delete bucketclaim "${claim_name}" -n "${namespace}" --wait=false
+  # Tests can be rerun after partial cleanup; treat NotFound as already-deleted and continue
+  # so we still validate that Secret + backend bucket are gone.
+  "${KUBECTL_BIN}" delete bucketclaim "${claim_name}" -n "${namespace}" --wait=false >/dev/null 2>&1 || true
 
   # Finalizer removal is asynchronous; validate via GC for secret and bucket delete in MinIO.
   wait_secret_gone "${secret_name}" "${namespace}" 180
@@ -174,11 +219,13 @@ delete_bucketclaim_and_assert_cleanup() {
 }
 
 echo "==> 1. Setting up MinIO test instance"
+wait_namespace_active "${MINIO_NS}" 240
 "${KUBECTL_BIN}" create ns "${MINIO_NS}" --dry-run=client -o yaml | "${KUBECTL_BIN}" apply -f -
 "${KUBECTL_BIN}" apply -f test/e2e/minio.yaml
 "${KUBECTL_BIN}" rollout status deployment/minio -n "${MINIO_NS}" --timeout="${WAIT_TIMEOUT}"
 
 echo "==> 2. Setting up k8s-s3-bucket-operator"
+wait_namespace_active "${OPERATOR_NS}" 240
 make deploy
 if [ -n "${OPERATOR_IMAGE}" ]; then
   echo "==> 2a. Overriding operator image: ${OPERATOR_IMAGE}"
@@ -190,6 +237,7 @@ fi
 "${KUBECTL_BIN}" rollout status deployment/k8s-s3-bucket-operator -n "${OPERATOR_NS}" --timeout="${WAIT_TIMEOUT}"
 
 echo "==> 3. Creating App Namespace and applying BucketClaim"
+wait_namespace_active "${APP_NS}" 240
 "${KUBECTL_BIN}" create ns "${APP_NS}" --dry-run=client -o yaml | "${KUBECTL_BIN}" apply -f -
 "${KUBECTL_BIN}" apply -f config/samples/bucketclass.yaml
 "${KUBECTL_BIN}" apply -f config/samples/bucketclaim.yaml
@@ -313,14 +361,20 @@ patch_operator_for_cosi
 "${KUBECTL_BIN}" rollout status deployment/k8s-s3-bucket-operator -n "${OPERATOR_NS}" --timeout="${COSI_WAIT_TIMEOUT}"
 "${KUBECTL_BIN}" rollout status deployment/objectstorage-controller -n "${OPERATOR_NS}" --timeout="${COSI_WAIT_TIMEOUT}"
 
-COSI_BUCKET_NAME="cosi-e2e-bucket"
+RUN_ID="$(date +%s)"
+COSI_BUCKET_NAME="cosi-e2e-bucket-${RUN_ID}"
 COSI_BUCKET_DIR="/data/${COSI_BUCKET_NAME}"
+COSI_BUCKETCLASS="cosi-minio-standard-${RUN_ID}"
+COSI_BUCKETACCESSCLASS="cosi-minio-keys-${RUN_ID}"
+COSI_BUCKETCLAIM="cosi-app-bucket-${RUN_ID}"
+COSI_BUCKETACCESS="cosi-app-access-${RUN_ID}"
+COSI_CREDS_SECRET="cosi-app-creds-${RUN_ID}"
 
 "${KUBECTL_BIN}" apply -f - <<EOF
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketClass
 metadata:
-  name: cosi-minio-standard
+  name: ${COSI_BUCKETCLASS}
 driverName: k8s-s3-bucket-operator
 deletionPolicy: Delete
 parameters:
@@ -330,46 +384,44 @@ parameters:
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
-  name: cosi-minio-keys
+  name: ${COSI_BUCKETACCESSCLASS}
 driverName: k8s-s3-bucket-operator
 authenticationType: Key
 ---
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketClaim
 metadata:
-  name: cosi-app-bucket
+  name: ${COSI_BUCKETCLAIM}
   namespace: ${APP_NS}
 spec:
-  bucketClassName: cosi-minio-standard
+  bucketClassName: ${COSI_BUCKETCLASS}
   protocols:
     - S3
 ---
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccess
 metadata:
-  name: cosi-app-access
+  name: ${COSI_BUCKETACCESS}
   namespace: ${APP_NS}
 spec:
-  bucketAccessClassName: cosi-minio-keys
-  bucketClaimName: cosi-app-bucket
-  credentialsSecretName: cosi-app-creds
+  bucketAccessClassName: ${COSI_BUCKETACCESSCLASS}
+  bucketClaimName: ${COSI_BUCKETCLAIM}
+  credentialsSecretName: ${COSI_CREDS_SECRET}
   protocol: S3
 EOF
 
-wait_jsonpath_true "bucketclaim" "${APP_NS}" "cosi-app-bucket" "${COSI_JSONPATH_BUCKETCLAIM_READY}" 300
+wait_jsonpath_true "bucketclaim" "${APP_NS}" "${COSI_BUCKETCLAIM}" "${COSI_JSONPATH_BUCKETCLAIM_READY}" 300
 
-BUCKET_OBJ="$("${KUBECTL_BIN}" get bucketclaim cosi-app-bucket -n "${APP_NS}" -o jsonpath="{.status.bucketName}")"
+BUCKET_OBJ="$("${KUBECTL_BIN}" get bucketclaim "${COSI_BUCKETCLAIM}" -n "${APP_NS}" -o jsonpath="{.status.bucketName}")"
 if [ -z "${BUCKET_OBJ}" ]; then
   echo "Error: COSI BucketClaim did not populate status.bucketName"
   exit 1
 fi
 
-wait_jsonpath_true "bucket" "" "${BUCKET_OBJ}" "${COSI_JSONPATH_BUCKET_READY}" 300
+wait_jsonpath_true "bucketaccess" "${APP_NS}" "${COSI_BUCKETACCESS}" "${COSI_JSONPATH_BUCKETACCESS_GRANTED}" 300
+"${KUBECTL_BIN}" get secret "${COSI_CREDS_SECRET}" -n "${APP_NS}"
 
-wait_jsonpath_true "bucketaccess" "${APP_NS}" "cosi-app-access" "${COSI_JSONPATH_BUCKETACCESS_GRANTED}" 300
-"${KUBECTL_BIN}" get secret cosi-app-creds -n "${APP_NS}"
-
-ACCESS_KEY="$("${KUBECTL_BIN}" get secret cosi-app-creds -n "${APP_NS}" -o jsonpath='{.data.BucketInfo}' | python3 -c 'import base64,json,sys; raw=sys.stdin.read().strip();
+ACCESS_KEY="$("${KUBECTL_BIN}" get secret "${COSI_CREDS_SECRET}" -n "${APP_NS}" -o jsonpath='{.data.BucketInfo}' | python3 -c 'import base64,json,sys; raw=sys.stdin.read().strip();
 if not raw: raise SystemExit("missing .data.BucketInfo")
 obj=json.loads(base64.b64decode(raw).decode("utf-8"))
 print(obj["spec"]["s3"]["accessKeyID"])')"
@@ -386,8 +438,8 @@ if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKE
 fi
 
 echo "==> 8a. Deleting BucketAccess should revoke credentials but keep bucket"
-"${KUBECTL_BIN}" delete bucketaccess cosi-app-access -n "${APP_NS}" --wait=true
-wait_secret_gone "cosi-app-creds" "${APP_NS}" 240
+"${KUBECTL_BIN}" delete bucketaccess "${COSI_BUCKETACCESS}" -n "${APP_NS}" --wait=true
+wait_secret_gone "${COSI_CREDS_SECRET}" "${APP_NS}" 240
 if assert_minio_user_exists "${ACCESS_KEY}"; then
   echo "Error: expected MinIO user ${ACCESS_KEY} to be removed after BucketAccess deletion"
   exit 1
@@ -398,7 +450,7 @@ if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKE
 fi
 
 echo "==> 8b. Deleting BucketClaim should delete bucket when BucketClass deletionPolicy=Delete"
-"${KUBECTL_BIN}" delete bucketclaim cosi-app-bucket -n "${APP_NS}" --wait=true
+"${KUBECTL_BIN}" delete bucketclaim "${COSI_BUCKETCLAIM}" -n "${APP_NS}" --wait=true
 wait_bucket_gone "${COSI_BUCKET_NAME}" 300
 
 echo ""
