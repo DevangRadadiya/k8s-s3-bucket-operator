@@ -18,9 +18,12 @@ case "${PROFILE}" in
   openshift)
     exec ./test/e2e/run-e2e-openshift.sh
     ;;
+  aws)
+    exec ./test/e2e/run-e2e-aws-localstack.sh
+    ;;
   *)
     echo "Unknown profile: ${PROFILE}"
-    echo "Usage: ./test/e2e/run.sh [k8s|openshift]"
+    echo "Usage: ./test/e2e/run.sh [k8s|openshift|aws]"
     exit 1
     ;;
 esac

@@ -12,7 +12,7 @@ Status meaning:
 
 | Area | Standalone + MinIO | COSI mode + MinIO | Standalone + AWS | Standalone + Ceph RGW |
 |---|---|---|---|---|
-| Availability | Supported | Supported | Supported (MVP) | Planned |
+| Availability | Supported | Supported | Supported | Planned |
 | Bucket provisioning | Supported | Supported | Supported | Planned |
 | Credential secret generation | Supported | Supported | Supported | Planned |
 | Quota management | Supported | Supported | Partial (no-op) | Planned |
@@ -29,7 +29,7 @@ Status meaning:
 
 - MinIO standalone mode is the current production path.
 - COSI mode is available and shares the same provisioning backend interface.
-- AWS support is currently **Standalone (MVP)** via `BucketClass.backend: AWS` and `awsCredentialSecretRef`.
+- AWS support is **Standalone** via `BucketClass.backend: AWS` and `awsCredentialSecretRef`; automated E2E via LocalStack runs in CI.
 - AWS limitations (current): bucket quota is a no-op; replication config is a no-op.
 - Additional providers are staged after core multi-backend maturity.
 

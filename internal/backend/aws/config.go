@@ -12,6 +12,10 @@ type Config struct {
 	SecretAccessKey string
 	// S3Endpoint optionally overrides the S3 endpoint (useful for S3-compatible backends / tests).
 	S3Endpoint string
+	// IAMEndpoint optionally overrides the IAM endpoint.
+	// Primarily used for LocalStack and other S3-compatible test environments where IAM is
+	// exposed on the same host/port as S3 (e.g. http://localstack:4566).
+	IAMEndpoint string
 }
 
 func firstSecretString(data map[string][]byte, keys ...string) string {
@@ -32,6 +36,7 @@ func ConfigFromSecretData(data map[string][]byte) (Config, error) {
 	accessKeyID := firstSecretString(data, "AWS_ACCESS_KEY_ID", "accessKeyID")
 	secretAccessKey := firstSecretString(data, "AWS_SECRET_ACCESS_KEY", "secretAccessKey", "secretAccessKeyID")
 	s3Endpoint := firstSecretString(data, "AWS_S3_ENDPOINT", "s3Endpoint")
+	iamEndpoint := firstSecretString(data, "AWS_IAM_ENDPOINT", "iamEndpoint")
 
 	if region == "" || accessKeyID == "" || secretAccessKey == "" {
 		return Config{}, fmt.Errorf("secret must define AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
@@ -41,6 +46,7 @@ func ConfigFromSecretData(data map[string][]byte) (Config, error) {
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		S3Endpoint:      s3Endpoint,
+		IAMEndpoint:     iamEndpoint,
 	}, nil
 }
 

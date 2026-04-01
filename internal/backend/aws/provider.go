@@ -70,7 +70,11 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 			o.UsePathStyle = true
 		}
 	})
-	iamClient := iam.NewFromConfig(awsCfg)
+	iamClient := iam.NewFromConfig(awsCfg, func(o *iam.Options) {
+		if strings.TrimSpace(cfg.IAMEndpoint) != "" {
+			o.BaseEndpoint = aws.String(strings.TrimSpace(cfg.IAMEndpoint))
+		}
+	})
 
 	ep := strings.TrimSpace(cfg.S3Endpoint)
 	if ep == "" {

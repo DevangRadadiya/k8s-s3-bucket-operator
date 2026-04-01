@@ -232,3 +232,75 @@ aws s3api head-bucket --bucket "$BUCKET" && echo "still exists" || echo "deleted
 - `BucketClaim.spec.quota`: **no-op** for AWS
 - `BucketClaim.spec.replicationTarget`: **no-op** for AWS (planned)
 
+## Troubleshooting
+
+### BucketClaim stays in Pending / Failed
+
+1. Check operator logs:
+   ```bash
+   kubectl -n k8s-s3-bucket-operator logs deploy/k8s-s3-bucket-operator --tail=60
+   ```
+2. Check the BucketClaim status conditions for an error message:
+   ```bash
+   kubectl -n <namespace> get bucketclaim <name> -o yaml | grep -A 20 conditions
+   ```
+3. Common causes and fixes:
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `secret … not found` | `awsCredentialSecretRef` namespace/name wrong, or Secret not created | Verify Secret name and namespace match the `BucketClass.awsCredentialSecretRef` |
+| `secret must define AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY` | Missing keys in the operator Secret | Add the missing keys |
+| `operation error S3: CreateBucket, … AccessDenied` | Operator IAM user missing `s3:CreateBucket` | Attach the IAM policy from Step 1 in this doc |
+| `operation error IAM: CreateUser, … AccessDenied` | Operator IAM user missing `iam:CreateUser` on `arn:…:user/cosi-*` | Check the IAM policy `iam:CreateUser` resource scope |
+| `operation error S3: PutPublicAccessBlock, … AccessDenied` | Operator IAM user missing hardening permissions | Add `s3:PutPublicAccessBlock`, `s3:PutBucketOwnershipControls`, `s3:PutBucketEncryption`, `s3:PutBucketPolicy` to the IAM policy |
+| `security.kmsKeyArn is required when security.defaultEncryption=SSE-KMS` | `BucketClass.parameters` has `security.defaultEncryption=SSE-KMS` but no KMS key ARN | Add `security.kmsKeyArn: <arn>` to `BucketClass.parameters` |
+| `bucketPolicyRef JSON invalid` | The ConfigMap/Secret referenced by `bucketPolicyRef` contains malformed JSON | Validate with `python3 -c "import json; json.load(open('policy.json'))"` |
+| `LimitExceeded … AccessKeysPerUser` | The per-claim IAM user hit the 2-key AWS quota; operator auto-rotates but may fail if a previous run left stale keys | Operator handles this automatically; if repeated, manually delete old access keys for the `cosi-*` user |
+
+### Bucket not deleted after claim deletion
+
+If `deletionPolicy: Delete` is set but the bucket persists after `kubectl delete bucketclaim`:
+
+1. Check the operator logs — a failed `DeleteBucket` call will appear as an error.
+2. Check whether the bucket still has objects. AWS does not allow deleting non-empty buckets. The operator does **not** empty buckets automatically; you must delete objects first:
+   ```bash
+   aws s3 rm s3://<bucket-name> --recursive
+   kubectl delete bucketclaim <name> -n <namespace>
+   ```
+3. Check if the BucketClaim finalizer is stuck:
+   ```bash
+   kubectl -n <namespace> get bucketclaim <name> -o jsonpath='{.metadata.finalizers}'
+   ```
+   If the operator is down, the finalizer will never run. Restart the operator and try again.
+
+### IAM user not cleaned up
+
+After `kubectl delete bucketclaim`, the `cosi-*` IAM user should be deleted. If it is not:
+
+1. Check operator logs for `RevokeAccess` / `DeleteUser` errors.
+2. If the user has an attached managed policy (not inline), the operator cannot delete it. The operator only manages the inline policy it created. Detach any manually-attached managed policies first.
+3. Manual cleanup:
+   ```bash
+   USER=cosi-<namespace>-<claimname>
+   aws iam list-user-policies --user-name "$USER"
+   aws iam delete-user-policy --user-name "$USER" --policy-name <policy-name>
+   aws iam list-access-keys --user-name "$USER"
+   aws iam delete-access-key --user-name "$USER" --access-key-id <id>
+   aws iam delete-user --user-name "$USER"
+   ```
+
+### Testing with LocalStack (no real AWS account)
+
+The operator supports `AWS_IAM_ENDPOINT` and `AWS_S3_ENDPOINT` overrides in the credentials Secret, so you can point both S3 and IAM at a [LocalStack](https://localstack.cloud) instance:
+
+```bash
+kubectl create secret generic localstack-creds \
+  --from-literal=AWS_REGION=us-east-1 \
+  --from-literal=AWS_ACCESS_KEY_ID=test \
+  --from-literal=AWS_SECRET_ACCESS_KEY=test \
+  --from-literal=AWS_S3_ENDPOINT=http://localstack:4566 \
+  --from-literal=AWS_IAM_ENDPOINT=http://localstack:4566
+```
+
+The automated LocalStack E2E (`./test/e2e/run.sh aws`) uses this approach in CI.
+

@@ -19,7 +19,7 @@ It is intentionally staged to keep reliability high while expanding scope.
 - Install via raw YAML, Kustomize, and Helm OCI
 - `BucketClaim` provisioning lifecycle via `status.conditions` (Ready) + `status.phase`
 - Per-`BucketClass` MinIO admin credentials via `minioCredentialSecretRef` (optional)
-- AWS S3 backend (Standalone MVP) via `BucketClass.backend: AWS` + `awsCredentialSecretRef`
+- AWS S3 backend (Standalone) via `BucketClass.backend: AWS` + `awsCredentialSecretRef`
   - Bucket security hardening (Block Public Access, ACL disable, default encryption, TLS-only policy)
   - Optional custom S3 bucket policy attachment via `BucketClass.bucketPolicyRef`
 
@@ -49,10 +49,10 @@ It is intentionally staged to keep reliability high while expanding scope.
 
 - Introduce backend abstraction layer — **shipped (MVP):** `internal/backend` + MinIO/AWS adapters; shared from standalone reconcile and COSI paths.
 - Keep MinIO as baseline adapter — **shipped**
-- Add AWS backend first with end-to-end validation — **shipped (MVP):** AWS provisioning + unit tests + user docs (`docs/AWS.md`) + manual smoke (`test/manual/aws-smoke.sh`). **Remaining for full “support policy” closure:** automated **AWS** E2E in GitHub Actions (needs long-lived or disposable AWS test account / IAM scoping strategy—not in CI yet); optional LocalStack-style emulation if adopted later.
+- Add AWS backend first with end-to-end validation — **shipped:** AWS provisioning + security hardening + unit tests + user docs (`docs/AWS.md`) + troubleshooting guide + automated E2E in CI via LocalStack (`test/e2e/run-e2e-aws-localstack.sh`, `./test/e2e/run.sh aws`) + manual smoke (`test/manual/aws-smoke.sh`).
 - Publish capability matrix per backend — **shipped:** `docs/CAPABILITY_MATRIX.md` (refreshed as backends evolve).
 
-**Wave 3 not in scope here (later waves):** Ceph RGW / additional providers (`Planned` in matrix), quota/replication depth on AWS (`Known limitations` in `docs/AWS.md`), cross-bucket workflows (**Wave 4**).
+**Wave 3 complete.** Future work (later waves): Ceph RGW / additional providers (`Planned` in matrix), quota/replication depth on AWS (`Known limitations` in `docs/AWS.md`), cross-bucket workflows (**Wave 4**).
 
 ### Wave 4: Cross-bucket and cross-backend workflows (post-foundation)
 

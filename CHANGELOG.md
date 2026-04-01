@@ -15,6 +15,10 @@ when versioned releases are published.
 - Manual checks: `test/manual/aws-smoke.sh`, `test/manual/aws-permissions-check.sh`.
 - `CONTRIBUTING.md`: pre-push local image + kind E2E checklist aligned with CI.
 - **CI:** `Publish Docker image` workflow runs kind E2E against the freshly published `ghcr.io/<repo>:main` image (pull + `kind load`, same script as local `OPERATOR_IMAGE=` testing).
+- **AWS backend (Wave 3 complete):** LocalStack-based automated E2E (`test/e2e/run-e2e-aws-localstack.sh`, `./test/e2e/run.sh aws`) runs in CI — covers bucket provisioning, security hardening calls, credentials Secret generation, and deletion/finalizer cleanup without real AWS credentials.
+- **AWS backend:** `AWS_IAM_ENDPOINT` optional key in the operator credential Secret lets the IAM client target a custom endpoint (LocalStack / S3-compatible environments). `Config.IAMEndpoint` passed to `iam.NewFromConfig`.
+- **AWS backend:** troubleshooting guide added to `docs/AWS.md` covering common IAM/S3 errors, stuck finalizers, IAM user cleanup, and LocalStack local testing.
+- **Docs:** Wave 3 marked complete in `docs/ROADMAP.md`; `docs/CAPABILITY_MATRIX.md` upgraded AWS availability from `Supported (MVP)` to `Supported`.
 
 ### Changed
 
