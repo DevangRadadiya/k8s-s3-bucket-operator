@@ -19,13 +19,15 @@ cleanup() {
     echo "KEEP_E2E_ARTIFACTS=1 set; skipping cleanup for debugging"
     return
   fi
-  "${KUBECTL_BIN}" delete ns "${APP_NS}" --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete ns "${MINIO_NS}" --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete ns "${OPERATOR_NS}" --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete crd bucketclaims.objectstorage.k8s.io bucketclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete crd buckets.objectstorage.k8s.io bucketaccesses.objectstorage.k8s.io bucketaccessclasses.objectstorage.k8s.io --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete clusterrole objectstorage-controller-role --ignore-not-found >/dev/null 2>&1 || true
-  "${KUBECTL_BIN}" delete clusterrolebinding objectstorage-controller --ignore-not-found >/dev/null 2>&1 || true
+  # Do not wait for propagation: namespace/CRD teardown can take minutes or stall on
+  # finalizers; blocking here makes the script (and CI) look hung after tests pass.
+  "${KUBECTL_BIN}" delete ns "${APP_NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete ns "${MINIO_NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete ns "${OPERATOR_NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete crd bucketclaims.objectstorage.k8s.io bucketclasses.objectstorage.k8s.io --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete crd buckets.objectstorage.k8s.io bucketaccesses.objectstorage.k8s.io bucketaccessclasses.objectstorage.k8s.io --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete clusterrole objectstorage-controller-role --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  "${KUBECTL_BIN}" delete clusterrolebinding objectstorage-controller --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

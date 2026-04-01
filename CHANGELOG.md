@@ -14,6 +14,7 @@ when versioned releases are published.
 - **AWS bucket security defaults**: Block Public Access, Object Ownership `BucketOwnerEnforced`, default encryption (SSE-S3 or SSE-KMS), enforced during reconcile (fail on API errors).
 - Manual checks: `test/manual/aws-smoke.sh`, `test/manual/aws-permissions-check.sh`.
 - `CONTRIBUTING.md`: pre-push local image + kind E2E checklist aligned with CI.
+- **CI:** `Publish Docker image` workflow runs kind E2E against the freshly published `ghcr.io/<repo>:main` image (pull + `kind load`, same script as local `OPERATOR_IMAGE=` testing).
 
 ### Changed
 
@@ -27,6 +28,7 @@ when versioned releases are published.
 
 - **E2E (COSI steps 8a/8b):** replace `kubectl delete --wait=true` on `BucketAccess` / `BucketClaim` with `--wait=false` plus bounded `wait_resource_gone` (using `COSI_WAIT_TIMEOUT`) so stuck finalizers fail fast with diagnostics instead of hanging CI; add heartbeat logs while polling.
 - **E2E:** `wait_resource_gone` now accepts kubectl-style timeouts (e.g. default `COSI_WAIT_TIMEOUT=300s`) by stripping a trailing `s`/`S` before bash arithmetic, fixing `value too great for base` errors in CI.
+- **E2E cleanup:** `kubectl delete` for namespaces, COSI CRDs, and controller RBAC in the EXIT trap uses `--wait=false` so teardown does not block until finalizers finish (avoids looking stuck after a successful run).
 
 ## [v0.2.0] - 2026-03-31
 
