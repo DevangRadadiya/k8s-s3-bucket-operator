@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend/resolve"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/cosi"
-	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/provisioning"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,18 +28,21 @@ import (
 const bucketClaimFinalizer = "objectstorage.k8s.io/finalizer"
 
 const (
-	claimConditionReady              = "Ready"
-	claimReasonProvisioning          = "Provisioning"
-	claimReasonBucketProvisioned     = "BucketProvisioned"
-	claimReasonBucketClassNotFound   = "BucketClassNotFound"
-	claimReasonBucketClassLookupFail = "BucketClassLookupFailed"
-	claimReasonUnsupportedDriver     = "UnsupportedDriver"
-	claimReasonCreateBucketFailed    = "CreateBucketFailed"
-	claimReasonConfigureBucketFailed = "ConfigureBucketFailed"
-	claimReasonGrantAccessFailed     = "GrantAccessFailed"
-	claimReasonReconcileSecretFailed           = "ReconcileSecretFailed"
-	claimReasonMinioCredentialSecretNotFound   = "MinioCredentialSecretNotFound"
-	claimReasonMinioCredentialSecretInvalid     = "MinioCredentialSecretInvalid"
+	claimConditionReady                      = "Ready"
+	claimReasonProvisioning                  = "Provisioning"
+	claimReasonBucketProvisioned             = "BucketProvisioned"
+	claimReasonBucketClassNotFound           = "BucketClassNotFound"
+	claimReasonBucketClassLookupFail         = "BucketClassLookupFailed"
+	claimReasonUnsupportedDriver             = "UnsupportedDriver"
+	claimReasonCreateBucketFailed            = "CreateBucketFailed"
+	claimReasonConfigureBucketFailed         = "ConfigureBucketFailed"
+	claimReasonGrantAccessFailed             = "GrantAccessFailed"
+	claimReasonReconcileSecretFailed         = "ReconcileSecretFailed"
+	claimReasonMinioCredentialSecretNotFound = "MinioCredentialSecretNotFound"
+	claimReasonMinioCredentialSecretInvalid  = "MinioCredentialSecretInvalid"
+	claimReasonAwsCredentialSecretNotFound   = "AwsCredentialSecretNotFound"
+	claimReasonAwsCredentialSecretInvalid    = "AwsCredentialSecretInvalid"
+	claimReasonUnsupportedBackend            = "UnsupportedBackend"
 )
 
 const maxConditionMessageRunes = 1024
@@ -48,18 +51,11 @@ const maxConditionMessageRunes = 1024
 type BucketClaimReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-	Minio  *minio.Client
+	// ProviderResolver resolves backend.Provider from BucketClass (MinIO credentials per class or default).
+	ProviderResolver *resolve.Resolver
 	// EnableCOSI makes this controller also create/update COSI `Bucket` CRs and set
 	// `.status.bucketReady` (needed for COSI-mode E2E assertions).
 	EnableCOSI bool
-
-	minioMu    sync.Mutex
-	minioCache map[string]*cachedMinioClient
-}
-
-type cachedMinioClient struct {
-	resourceVersion string
-	client          *minio.Client
 }
 
 func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -158,19 +154,37 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	mc, err := r.minioClientForClass(ctx, class)
+	mc, err := r.ProviderResolver.ProviderForClass(ctx, class)
 	if err != nil {
-		log.Error(err, "Failed to resolve MinIO client for BucketClass")
+		log.Error(err, "Failed to resolve storage provider for BucketClass")
 		reconcileErrorsTotal.WithLabelValues("minio_credentials").Inc()
 		reconcileTotal.WithLabelValues("error").Inc()
 		if apierrors.IsNotFound(err) {
 			// Secret might appear after the claim; keep claim in provisioning and retry.
+			if strings.EqualFold(strings.TrimSpace(class.Backend), "AWS") {
+				r.noteClaimProvisioning(ctx, req.NamespacedName,
+					fmt.Sprintf("AWS credentials secret not found for BucketClass %q; retrying", class.Name))
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
 			r.noteClaimProvisioning(ctx, req.NamespacedName,
 				fmt.Sprintf("MinIO credentials secret not found for BucketClass %q; retrying", class.Name))
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		} else {
-			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonMinioCredentialSecretInvalid, err.Error())
 		}
+		// Unsupported backend name (e.g. typo) or invalid secret contents.
+		if strings.Contains(err.Error(), "unsupported backend") {
+			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonUnsupportedBackend, err.Error())
+			return ctrl.Result{}, nil
+		}
+		if strings.Contains(err.Error(), "awsCredentialSecretRef") || strings.Contains(err.Error(), "invalid AWS credential secret") {
+			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonAwsCredentialSecretInvalid, err.Error())
+			return ctrl.Result{}, nil
+		}
+		if errors.Is(err, backend.ErrNotImplemented) {
+			r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonUnsupportedBackend, err.Error())
+			return ctrl.Result{}, nil
+		}
+		// Preserve previous behavior for MinIO: surface invalid secrets as errors (will requeue via controller-runtime backoff).
+		r.noteClaimNotReady(ctx, req.NamespacedName, claimReasonMinioCredentialSecretInvalid, err.Error())
 		return ctrl.Result{}, err
 	}
 
@@ -200,6 +214,9 @@ func (r *BucketClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			case provisioning.OpCreateBucket:
 				stage = "create_bucket"
 				reason = claimReasonCreateBucketFailed
+			case provisioning.OpConfigureBucket:
+				stage = "configure_bucket"
+				reason = claimReasonConfigureBucketFailed
 			case provisioning.OpSetQuota:
 				stage = "set_quota"
 				reason = claimReasonConfigureBucketFailed
@@ -344,7 +361,7 @@ func (r *BucketClaimReconciler) ensureCosiBucket(ctx context.Context, claim *v1a
 			"namespace":  claim.Namespace,
 		},
 		"bucketClassName": claim.Spec.BucketClassName,
-		"driverName":       class.DriverName,
+		"driverName":      class.DriverName,
 		"deletionPolicy":  string(class.DeletionPolicy),
 		"protocols":       protocols,
 	}
@@ -384,9 +401,21 @@ func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *
 		return err
 	}
 
-	mc, err := r.minioClientForClass(ctx, class)
+	mc, err := r.ProviderResolver.ProviderForClass(ctx, class)
 	if err != nil {
-		return fmt.Errorf("minio client for finalization: %w", err)
+		if strings.Contains(err.Error(), "unsupported backend") {
+			log.Info("Skipping backend finalization; unsupported backend", "error", err)
+			return nil
+		}
+		if strings.Contains(err.Error(), "awsCredentialSecretRef") || strings.Contains(err.Error(), "invalid AWS credential secret") {
+			log.Info("Skipping backend finalization; AWS credentials not configured", "error", err)
+			return nil
+		}
+		if errors.Is(err, backend.ErrNotImplemented) {
+			log.Info("Skipping backend finalization; backend not implemented", "error", err)
+			return nil
+		}
+		return fmt.Errorf("storage provider for finalization: %w", err)
 	}
 
 	accessKey := ""
@@ -397,40 +426,6 @@ func (r *BucketClaimReconciler) finalizeBucketClaim(ctx context.Context, claim *
 		}
 	}
 	return provisioning.RevokeAccessAndMaybeDeleteBucket(ctx, mc, claim, class, accessKey)
-}
-
-func (r *BucketClaimReconciler) minioClientForClass(ctx context.Context, class *v1alpha1.BucketClass) (*minio.Client, error) {
-	ref := class.MinioCredentialSecretRef
-	if ref == nil || ref.Name == "" {
-		return r.Minio, nil
-	}
-	if ref.Namespace == "" {
-		return nil, fmt.Errorf("bucketClass %q: minioCredentialSecretRef.namespace is required when name is set", class.Name)
-	}
-	secret := &corev1.Secret{}
-	key := types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}
-	if err := r.Get(ctx, key, secret); err != nil {
-		return nil, err
-	}
-	cfg, err := minio.ConfigFromSecretData(secret.Data)
-	if err != nil {
-		return nil, fmt.Errorf("invalid MinIO credential secret %s/%s: %w", ref.Namespace, ref.Name, err)
-	}
-	cacheKey := ref.Namespace + "/" + ref.Name
-	r.minioMu.Lock()
-	defer r.minioMu.Unlock()
-	if r.minioCache == nil {
-		r.minioCache = make(map[string]*cachedMinioClient)
-	}
-	if ent := r.minioCache[cacheKey]; ent != nil && ent.resourceVersion == secret.ResourceVersion {
-		return ent.client, nil
-	}
-	c, err := minio.NewClient(cfg)
-	if err != nil {
-		return nil, err
-	}
-	r.minioCache[cacheKey] = &cachedMinioClient{resourceVersion: secret.ResourceVersion, client: c}
-	return c, nil
 }
 
 func trimConditionMessage(msg string) string {

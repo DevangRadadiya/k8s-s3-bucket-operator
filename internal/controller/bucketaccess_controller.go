@@ -3,14 +3,16 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	v1alpha1 "github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend/resolve"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/cosi"
-	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,8 +42,16 @@ func accessKeyForAccount(accountID string) string {
 
 type BucketAccessReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Minio  *minio.Client
+	Scheme           *runtime.Scheme
+	ProviderResolver *resolve.Resolver
+}
+
+func (r *BucketAccessReconciler) providerForClaim(ctx context.Context, claim *v1alpha1.BucketClaim) (backend.Provider, error) {
+	class := &v1alpha1.BucketClass{}
+	if err := r.Get(ctx, types.NamespacedName{Name: claim.Spec.BucketClassName}, class); err != nil {
+		return nil, err
+	}
+	return r.ProviderResolver.ProviderForClass(ctx, class)
 }
 
 func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -117,8 +127,17 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				accessKeyID = accessKeyForAccount(accountID)
 			}
 
+			provider, err := r.providerForClaim(ctx, claim)
+			if err != nil {
+				if errors.Is(err, backend.ErrNotImplemented) || strings.Contains(err.Error(), "unsupported backend") {
+					logger.Error(err, "BucketAccess finalizer: storage backend not available", "bucketClassName", claim.Spec.BucketClassName)
+					return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+				}
+				return ctrl.Result{}, err
+			}
+
 			// Revoke access but do not delete the backend bucket.
-			if err := r.Minio.RevokeAccess(ctx, bucketName, accountID, accessKeyID); err != nil {
+			if err := provider.RevokeAccess(ctx, bucketName, accountID, accessKeyID); err != nil {
 				logger.Error(err, "Failed to revoke access", "bucketName", bucketName, "accountID", accountID)
 				// Retry: revocation failure might be transient.
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -167,8 +186,20 @@ func (r *BucketAccessReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	bucketName := strings.ToLower(strings.TrimSpace(claim.Status.BucketName))
 
+	provider, err := r.providerForClaim(ctx, claim)
+	if err != nil {
+		if errors.Is(err, backend.ErrNotImplemented) || strings.Contains(err.Error(), "unsupported backend") {
+			logger.Error(err, "BucketAccess: storage backend not available", "bucketClassName", claim.Spec.BucketClassName)
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
 	// Grant access. For now, we treat all requests as S3 + ReadWrite.
-	creds, err := r.Minio.GrantAccess(ctx, bucketName, accountID, string(v1alpha1.AccessTypeReadWrite), "", "")
+	creds, err := provider.GrantAccess(ctx, bucketName, accountID, string(v1alpha1.AccessTypeReadWrite), "", "")
 	if err != nil {
 		logger.Error(err, "Failed to grant access", "bucketName", bucketName, "accountID", accountID)
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil

@@ -22,6 +22,11 @@ spec:
           properties:
             driverName:
               type: string
+            backend:
+              type: string
+              description: >-
+                Object storage implementation. MinIO (default) or AWS.
+              enum: [MinIO, AWS]
             deletionPolicy:
               type: string
               enum: [Delete, Retain]
@@ -38,11 +43,36 @@ spec:
               type: object
               additionalProperties:
                 type: string
+            bucketPolicyRef:
+              type: object
+              description: >-
+                Optional reference to a JSON bucket policy document to apply (backend=AWS). Kind is
+                ConfigMap or Secret; `key` selects the entry containing the JSON policy.
+              properties:
+                kind:
+                  type: string
+                  enum: [ConfigMap, Secret]
+                namespace:
+                  type: string
+                name:
+                  type: string
+                key:
+                  type: string
             minioCredentialSecretRef:
               type: object
               description: >-
                 Secret (namespace + name) with MinIO admin keys (MINIO_ENDPOINT, MINIO_ACCESS_KEY,
                 MINIO_SECRET_KEY, optional MINIO_USE_SSL). If unset, operator uses its Deployment env.
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+            awsCredentialSecretRef:
+              type: object
+              description: >-
+                Secret (namespace + name) with AWS credentials/config (AWS_REGION, AWS_ACCESS_KEY_ID,
+                AWS_SECRET_ACCESS_KEY, optional AWS_S3_ENDPOINT). Used when backend=AWS.
               properties:
                 name:
                   type: string

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	v1alpha1 "github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
-	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/provisioning"
 	"github.com/go-logr/logr"
 	cosipb "sigs.k8s.io/container-object-storage-interface-spec"
@@ -37,7 +37,7 @@ type Server struct {
 	cosipb.UnimplementedProvisionerServer
 
 	Log        logr.Logger
-	Minio      *minio.Client
+	Provider   backend.Provider
 	KubeClient client.Client
 	DriverName string
 
@@ -46,10 +46,10 @@ type Server struct {
 	lis      net.Listener
 }
 
-func NewServer(minioClient *minio.Client, kube client.Client, driverName, socketPath string) *Server {
+func NewServer(provider backend.Provider, kube client.Client, driverName, socketPath string) *Server {
 	return &Server{
 		Log:        ctrl.Log.WithName("cosi"),
-		Minio:      minioClient,
+		Provider:   provider,
 		KubeClient: kube,
 		DriverName: driverName,
 		sockPath:   socketPath,
@@ -124,7 +124,7 @@ func (s *Server) DriverCreateBucket(ctx context.Context, req *cosipb.DriverCreat
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	bucketName, err := provisioning.ProvisionBucket(ctx, s.Minio, claim, class)
+	bucketName, err := provisioning.ProvisionBucket(ctx, s.Provider, claim, class)
 	if err != nil {
 		return nil, grpcErr(err)
 	}
@@ -193,7 +193,7 @@ func (s *Server) DriverDeleteBucket(ctx context.Context, req *cosipb.DriverDelet
 		return &cosipb.DriverDeleteBucketResponse{}, nil
 	}
 
-	if err := s.Minio.DeleteBucket(ctx, bucketName); err != nil {
+	if err := s.Provider.DeleteBucket(ctx, bucketName); err != nil {
 		return nil, grpcErr(err)
 	}
 	return &cosipb.DriverDeleteBucketResponse{}, nil
@@ -228,7 +228,7 @@ func (s *Server) DriverGrantBucketAccess(ctx context.Context, req *cosipb.Driver
 		existingSecretKey = strings.TrimSpace(req.Parameters["existingSecretKey"])
 	}
 
-	creds, err := provisioning.GrantBucketAccess(ctx, s.Minio, claim, strings.ToLower(bucketObjectName), existingAccessKey, existingSecretKey)
+	creds, err := provisioning.GrantBucketAccess(ctx, s.Provider, claim, strings.ToLower(bucketObjectName), existingAccessKey, existingSecretKey)
 	if err != nil {
 		return nil, grpcErr(err)
 	}
@@ -270,7 +270,7 @@ func (s *Server) DriverRevokeBucketAccess(ctx context.Context, req *cosipb.Drive
 		return nil, status.Errorf(codes.InvalidArgument, "invalid account_id")
 	}
 
-	if err := provisioning.RevokeBucketAccess(ctx, s.Minio, claim, bucketObjectName, ""); err != nil {
+	if err := provisioning.RevokeBucketAccess(ctx, s.Provider, claim, bucketObjectName, ""); err != nil {
 		return nil, grpcErr(err)
 	}
 	return &cosipb.DriverRevokeBucketAccessResponse{}, nil

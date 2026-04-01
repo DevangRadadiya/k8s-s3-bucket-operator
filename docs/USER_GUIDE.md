@@ -26,10 +26,17 @@ If you want **COSI** (`Bucket` / `BucketAccess`) in addition to the Wave 1 flow,
 
 | Resource | Scope | Who creates it | Purpose |
 |----------|-------|----------------|---------|
-| **BucketClass** | Cluster | Cluster admin | Binds a class name to this operator (`driverName`), MinIO region/parameters, **deletion policy**, and optional **object lock / retention** defaults. |
+| **BucketClass** | Cluster | Cluster admin | Binds a class name to this operator (`driverName`), selects a storage **backend** (`MinIO` / `AWS`), sets class-level defaults (deletion policy, object lock / retention), and references credentials for that backend. |
 | **BucketClaim** | Namespaced | App team | Requests a bucket; operator creates the bucket, optional **quota / lifecycle / replication**, generates **IAM-style** access, and writes a **Secret**. |
 
-By default the operator talks to MinIO using environment variables on the deployment (see `deploy/operator.yaml` → `Secret` `minio-credentials`). Optionally, each **BucketClass** can set **minioCredentialSecretRef** so claims using that class use a different MinIO admin Secret (multi-tenant / multiple backends). The operator’s ServiceAccount must be allowed to **get** that Secret (the bundled **ClusterRole** already allows **get** on Secrets cluster-wide).
+By default the operator talks to MinIO using environment variables on the deployment (see `deploy/operator.yaml` → `Secret` `minio-credentials`).
+
+Optionally, each **BucketClass** can:
+
+- Set `backend: MinIO` (or omit `backend`) and set **`minioCredentialSecretRef`** so claims using that class use a different MinIO admin Secret (multi-tenant / multiple MinIOs).
+- Set `backend: AWS` and set **`awsCredentialSecretRef`** with AWS credentials/config for S3 + IAM.
+
+The operator’s ServiceAccount must be allowed to **get** the referenced Secret (the bundled **ClusterRole** already allows **get** on Secrets cluster-wide).
 
 ---
 
@@ -111,6 +118,7 @@ kind: BucketClass
 metadata:
   name: minio-standard
 driverName: k8s-s3-bucket-operator
+backend: MinIO                    # optional; MinIO (default) or AWS
 deletionPolicy: Delete          # Delete | Retain
 objectLockingEnabled: true      # optional; enables object lock at bucket creation
 retentionMode: GOVERNANCE       # optional; GOVERNANCE | COMPLIANCE (used when locking is enabled)
@@ -122,12 +130,15 @@ parameters:
 | Field | Type | Description |
 |-------|------|-------------|
 | `driverName` | string | Must be `k8s-s3-bucket-operator` for this operator to reconcile claims using this class. |
+| `backend` | `MinIO` / `AWS` | Storage backend implementation. Default is `MinIO`. |
 | `deletionPolicy` | `Delete` / `Retain` | On **BucketClaim** deletion: remove MinIO user/policy always; **delete** or **retain** the bucket. |
 | `objectLockingEnabled` | bool | If true, bucket is created with **object locking** enabled (cannot be enabled later on an existing bucket without lock). |
 | `retentionMode` | `GOVERNANCE` / `COMPLIANCE` | Declared default retention mode for documentation / future enforcement; align with your compliance process. |
 | `retentionDays` | int | Declared retention duration in days; align with your compliance process. |
 | `parameters.region` | string | S3 region passed to MinIO bucket creation (default `us-east-1` if empty). |
+| `bucketPolicyRef` | object | Optional (AWS backend). Reference to a ConfigMap/Secret containing a JSON S3 **bucket policy** to apply. Requires `kind` (`ConfigMap`/`Secret`), `namespace`, `name`, and `key`. The operator merges it with the built-in TLS-only guardrail. |
 | `minioCredentialSecretRef` | object | Optional. `namespace` + `name` of a Secret with the same keys as operator `minio-credentials`: `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, and optional `MINIO_USE_SSL` (`"true"` / `"false"`). Shorter aliases `endpoint`, `accessKey`, `secretKey`, `useSSL` are also accepted. If omitted, the operator uses its pod **MINIO_*** env. |
+| `awsCredentialSecretRef` | object | Required when `backend: AWS`. `namespace` + `name` of a Secret defining `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_S3_ENDPOINT` (for custom S3 endpoints / testing). Aliases: `region`, `accessKeyID`, `secretAccessKey`, `s3Endpoint`. |
 
 Example (per-class backend):
 
@@ -135,6 +146,21 @@ Example (per-class backend):
 minioCredentialSecretRef:
   namespace: team-a-infra
   name: minio-admin-team-a
+```
+
+Example (AWS backend):
+
+```yaml
+backend: AWS
+parameters:
+  # Security hardening defaults (AWS backend)
+  security.blockPublicAccess: "true"
+  security.disableAcls: "true"
+  security.defaultEncryption: "SSE-S3"   # SSE-S3 | SSE-KMS | none
+  security.tlsOnlyPolicy: "true"
+awsCredentialSecretRef:
+  namespace: team-a-infra
+  name: aws-creds
 ```
 
 ---

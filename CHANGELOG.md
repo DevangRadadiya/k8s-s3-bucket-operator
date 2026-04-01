@@ -8,7 +8,20 @@ when versioned releases are published.
 
 ## [Unreleased]
 
-- TBD
+### Added
+
+- **AWS S3 backend (MVP)**: `BucketClass.backend: AWS` with `awsCredentialSecretRef`, S3 + IAM provisioning, and docs (`docs/AWS.md`); optional `BucketClass.bucketPolicyRef` (ConfigMap/Secret JSON) merged with a TLS-only guardrail bucket policy.
+- **AWS bucket security defaults**: Block Public Access, Object Ownership `BucketOwnerEnforced`, default encryption (SSE-S3 or SSE-KMS), enforced during reconcile (fail on API errors).
+- Manual checks: `test/manual/aws-smoke.sh`, `test/manual/aws-permissions-check.sh`.
+- `CONTRIBUTING.md`: pre-push local image + kind E2E checklist aligned with CI.
+
+### Changed
+
+- Capability matrix, roadmap, and user guide updates for AWS backend and security knobs (`BucketClass.parameters` `security.*`).
+
+### Changed (packaging)
+
+- Helm chart **0.2.2**: CRD packaging sync for `bucketPolicyRef`.
 
 ## [v0.2.0] - 2026-03-31
 

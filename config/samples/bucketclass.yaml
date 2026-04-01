@@ -5,14 +5,33 @@ kind: BucketClass
 metadata:
   name: minio-standard
 driverName: k8s-s3-bucket-operator
+# backend: MinIO   # optional; default is MinIO. Set to AWS to use S3+IAM (requires awsCredentialSecretRef).
 deletionPolicy: Delete
 objectLockingEnabled: true
 retentionMode: GOVERNANCE
 retentionDays: 30
 parameters:
   region: "us-east-1"
+  # AWS security hardening (when backend: AWS):
+  # security.blockPublicAccess: "true"
+  # security.disableAcls: "true"
+  # security.defaultEncryption: "SSE-S3"   # SSE-S3 | SSE-KMS | none
+  # security.kmsKeyArn: "arn:aws:kms:..."  # required when defaultEncryption=SSE-KMS
+  # security.tlsOnlyPolicy: "true"
   # MinIO admin credentials: default = operator Deployment MINIO_* env.
   # For a different MinIO per class, create a Secret with MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_USE_SSL and reference it:
   # minioCredentialSecretRef:
   #   namespace: minio-ns
   #   name: minio-admin-other
+  #
+  # AWS (when backend: AWS): create a Secret with AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (optional AWS_S3_ENDPOINT) and reference it:
+  # awsCredentialSecretRef:
+  #   namespace: aws-ns
+  #   name: aws-creds
+  #
+  # Optional AWS bucket policy document reference (applied as an S3 bucket policy):
+  # bucketPolicyRef:
+  #   kind: ConfigMap   # or Secret
+  #   namespace: aws-ns
+  #   name: aws-bucket-policy
+  #   key: policy.json

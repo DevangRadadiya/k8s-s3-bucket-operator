@@ -19,11 +19,13 @@ It is intentionally staged to keep reliability high while expanding scope.
 - Install via raw YAML, Kustomize, and Helm OCI
 - `BucketClaim` provisioning lifecycle via `status.conditions` (Ready) + `status.phase`
 - Per-`BucketClass` MinIO admin credentials via `minioCredentialSecretRef` (optional)
+- AWS S3 backend (Standalone MVP) via `BucketClass.backend: AWS` + `awsCredentialSecretRef`
+  - Bucket security hardening (Block Public Access, ACL disable, default encryption, TLS-only policy)
+  - Optional custom S3 bucket policy attachment via `BucketClass.bucketPolicyRef`
 
 ### Planned
 
 - COSI-compatible mode (**experimental scaffolding landed:** in-process COSI gRPC driver behind `COSI_ENABLED`, Helm `cosi.enabled`, plus optional COSI CRDs/controller install — see `docs/COSI.md`)
-- AWS S3 backend (first multi-backend target)
 - Ceph RGW and additional providers after AWS maturity
 
 ## Delivery waves

@@ -28,6 +28,7 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 ## What this operator does 🚀
 
 - Reconciles `BucketClaim` objects and creates buckets in MinIO.
+- Can also provision buckets in AWS S3 when `BucketClass.backend: AWS` is used.
 - Generates per-claim credentials and stores them in namespaced Kubernetes Secrets.
 - Applies claim-level controls like quota, lifecycle, access type, and replication target.
 - Enforces class-level settings like deletion policy and object lock at bucket creation.
@@ -45,12 +46,14 @@ Kubernetes operator for provisioning and managing S3-compatible buckets (MinIO f
 - **HA deployment support** (2 replicas + leader election)
 - **OpenShift-compatible manifests** under `deploy/openshift/`
 - **Helm chart** — [`charts/k8s-s3-bucket-operator`](charts/k8s-s3-bucket-operator) (published to **GHCR OCI** by CI)
+- **AWS backend (MVP)** — `BucketClass.backend: AWS` with secure bucket defaults (public access block, ACL disable, default encryption, TLS-only policy) and optional custom bucket policy attachment (`bucketPolicyRef`). See [`docs/AWS.md`](docs/AWS.md).
 
 ## Documentation 📚
 
 | Doc | Location | Purpose |
 |---|---|---|
 | User guide | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Full install + CRD behavior + troubleshooting |
+| AWS backend | [`docs/AWS.md`](docs/AWS.md) | S3 + IAM setup, IAM policy, smoke test |
 | FAQ | [`docs/FAQ.md`](docs/FAQ.md) | Short answers to common problems |
 | Try locally | [`docs/TRY_LOCALLY.md`](docs/TRY_LOCALLY.md) | Minimal local cluster + MinIO path |
 | Release checklist | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Tag/release process and verification |

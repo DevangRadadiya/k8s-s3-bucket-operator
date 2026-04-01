@@ -12,11 +12,12 @@ import (
 type ProvisioningOperation string
 
 const (
-	OpCreateBucket  ProvisioningOperation = "create_bucket"
-	OpSetQuota      ProvisioningOperation = "set_quota"
-	OpSetLifecycle  ProvisioningOperation = "set_lifecycle"
-	OpGrantAccess   ProvisioningOperation = "grant_access"
-	OpRevokeAccess  ProvisioningOperation = "revoke_access"
+	OpCreateBucket    ProvisioningOperation = "create_bucket"
+	OpConfigureBucket ProvisioningOperation = "configure_bucket"
+	OpSetQuota        ProvisioningOperation = "set_quota"
+	OpSetLifecycle    ProvisioningOperation = "set_lifecycle"
+	OpGrantAccess     ProvisioningOperation = "grant_access"
+	OpRevokeAccess    ProvisioningOperation = "revoke_access"
 )
 
 type ProvisioningError struct {
@@ -67,4 +68,3 @@ func IsTransientMinioError(err error) bool {
 
 	return false
 }
-

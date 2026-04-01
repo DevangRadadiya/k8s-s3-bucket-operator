@@ -154,6 +154,26 @@ go test -v ./...
 go test -cover ./...
 ```
 
+### Pre-push validation (operator / reconciler / image changes)
+
+This mirrors CI in `.github/workflows/test.yml` and catches image-related regressions before `main`:
+
+1. **Lint + unit tests:** `make lint` and `go test ./...`.
+2. **Local image + kind E2E:**
+
+   ```bash
+   docker build -t k8s-s3-bucket-operator:test .
+   for c in $(kind get clusters); do
+     kind load docker-image k8s-s3-bucket-operator:test --name "$c"
+   done
+   OPERATOR_IMAGE=k8s-s3-bucket-operator:test ./test/e2e/run.sh k8s
+   OPERATOR_IMAGE=k8s-s3-bucket-operator:test ./test/e2e/run.sh openshift
+   ```
+
+3. **After merging to `main`:** wait until GitHub Actions **Test** and **Publish Docker image** complete; then optionally pull `ghcr.io/devangradadiya/k8s-s3-bucket-operator:main` and re-run E2E against that tag.
+
+**Note:** The E2E scripts remove CRDs/namespaces on exit. If `kubectl` targets **kind**, re-apply `deploy/objectstorage.k8s.io_*.yaml` before testing against another cluster (for example AWS).
+
 ---
 
 ## Building the Docker Image

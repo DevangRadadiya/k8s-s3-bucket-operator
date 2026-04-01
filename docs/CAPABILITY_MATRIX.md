@@ -12,21 +12,24 @@ Status meaning:
 
 | Area | Standalone + MinIO | COSI mode + MinIO | Standalone + AWS | Standalone + Ceph RGW |
 |---|---|---|---|---|
-| Availability | Supported | Planned | Planned | Planned |
-| Bucket provisioning | Supported | Planned | Planned | Planned |
-| Credential secret generation | Supported | Planned | Planned | Planned |
-| Quota management | Supported | Planned | Planned | Planned |
-| Lifecycle rules | Supported | Planned | Planned | Planned |
-| Access type (`ReadOnly`/`ReadWrite`) | Supported | Planned | Planned | Planned |
-| Object lock toggle | Supported | Planned | Planned | Planned |
-| Replication target field | Partial | Planned | Planned | Planned |
-| Deletion policy (`Delete`/`Retain`) | Supported | Planned | Planned | Planned |
-| OpenShift manifests | Supported | Planned | Planned | Planned |
+| Availability | Supported | Supported | Supported (MVP) | Planned |
+| Bucket provisioning | Supported | Supported | Supported | Planned |
+| Credential secret generation | Supported | Supported | Supported | Planned |
+| Quota management | Supported | Supported | Partial (no-op) | Planned |
+| Lifecycle rules | Supported | Supported | Supported | Planned |
+| Access type (`ReadOnly`/`ReadWrite`) | Supported | Supported | Supported | Planned |
+| Object lock toggle | Supported | Supported | Supported (toggle only) | Planned |
+| Replication target field | Partial | Partial | Partial (no-op) | Planned |
+| Deletion policy (`Delete`/`Retain`) | Supported | Supported | Supported | Planned |
+| Bucket security hardening (public access block, ACL disable, encryption, TLS-only policy) | Partial | Partial | Supported | Planned |
+| Custom S3 bucket policy attachment (`bucketPolicyRef`) | Planned | Planned | Supported | Planned |
+| OpenShift manifests | Supported | Supported | Supported | Planned |
 
 ## Notes
 
 - MinIO standalone mode is the current production path.
-- COSI mode is planned to be introduced in hybrid fashion (no break for current users).
-- AWS is the first planned backend after hybrid baseline.
+- COSI mode is available and shares the same provisioning backend interface.
+- AWS support is currently **Standalone (MVP)** via `BucketClass.backend: AWS` and `awsCredentialSecretRef`.
+- AWS limitations (current): bucket quota is a no-op; replication config is a no-op.
 - Additional providers are staged after core multi-backend maturity.
 

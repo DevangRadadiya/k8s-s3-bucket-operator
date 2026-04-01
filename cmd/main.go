@@ -9,6 +9,7 @@ import (
 
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/cosi"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend/resolve"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/controller"
 	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/minio"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -86,11 +87,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	providerResolver := resolve.NewResolver(mgr.GetClient(), minioClient)
+
 	if err = (&controller.BucketClaimReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Minio:  minioClient,
-		EnableCOSI: cosiEnabled,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		ProviderResolver:   providerResolver,
+		EnableCOSI:         cosiEnabled,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BucketClaim")
 		os.Exit(1)
@@ -99,9 +102,9 @@ func main() {
 	if cosiEnabled {
 		// Reconcile COSI access CRs + keep secrets/users in sync.
 		if err := (&controller.BucketAccessReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Minio:  minioClient,
+			Client:             mgr.GetClient(),
+			Scheme:             mgr.GetScheme(),
+			ProviderResolver:   providerResolver,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "BucketAccess")
 			os.Exit(1)

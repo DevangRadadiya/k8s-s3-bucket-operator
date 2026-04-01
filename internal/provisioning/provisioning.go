@@ -7,23 +7,15 @@ import (
 	"strings"
 
 	v1alpha1 "github.com/DevangRadadiya/k8s-s3-bucket-operator/api/v1alpha1"
+	"github.com/DevangRadadiya/k8s-s3-bucket-operator/internal/backend"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	"k8s.io/apimachinery/pkg/api/resource"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// MinioClient is the subset of our MinIO wrapper the provisioning logic needs.
-// It enables unit-testing without connecting to a real MinIO instance.
-type MinioClient interface {
-	CreateBucket(ctx context.Context, bucketName, region string, objectLocking bool) error
-	SetBucketQuota(ctx context.Context, bucketName string, quotaBytes int64) error
-	SetBucketLifecycle(ctx context.Context, bucketName string, cfg *lifecycle.Configuration) error
-	SetBucketReplication(ctx context.Context, bucketName string, cfg replication.Config) error
-	GrantAccess(ctx context.Context, bucketName, accountID, accessType, existingAccessKey, existingSecretKey string) (map[string]string, error)
-	RevokeAccess(ctx context.Context, bucketName, accountID, accessKey string) error
-	DeleteBucket(ctx context.Context, bucketName string) error
-}
+// MinioClient is an alias for backend.Provider for older call sites and tests.
+type MinioClient = backend.Provider
 
 type AccessCredentials struct {
 	AccessKeyID     string
@@ -34,7 +26,7 @@ type AccessCredentials struct {
 
 func ProvisionBucketAndGrantAccess(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	class *v1alpha1.BucketClass,
 	existingAccessKey,
@@ -58,7 +50,7 @@ func ProvisionBucketAndGrantAccess(
 // This is useful for COSI's DriverCreateBucket handler.
 func ProvisionBucket(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	class *v1alpha1.BucketClass,
 ) (string, error) {
@@ -67,7 +59,7 @@ func ProvisionBucket(
 
 func createBucketAndConfigure(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	class *v1alpha1.BucketClass,
 ) (string, error) {
@@ -94,6 +86,17 @@ func createBucketAndConfigure(
 			Op:         OpCreateBucket,
 			BucketName: bucketName,
 			Err:        err,
+		}
+	}
+
+	// Optional backend-specific security hardening.
+	if sc, ok := mc.(backend.BucketSecurityConfigurer); ok {
+		if err := sc.ConfigureBucketSecurity(ctx, bucketName, class.Parameters); err != nil {
+			return bucketName, &ProvisioningError{
+				Op:         OpConfigureBucket,
+				BucketName: bucketName,
+				Err:        err,
+			}
 		}
 	}
 
@@ -159,7 +162,7 @@ func createBucketAndConfigure(
 
 func grantAccess(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	bucketName string,
 	existingAccessKey,
@@ -208,7 +211,7 @@ func grantAccess(
 // This is used by the COSI gRPC driver (bucket creation is handled separately by COSI).
 func GrantBucketAccess(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	bucketName string,
 	existingAccessKey,
@@ -221,7 +224,7 @@ func GrantBucketAccess(
 // Unlike RevokeAccessAndMaybeDeleteBucket, it never deletes the bucket.
 func RevokeBucketAccess(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	bucketName string,
 	accessKey string,
@@ -239,7 +242,7 @@ func RevokeBucketAccess(
 
 func RevokeAccessAndMaybeDeleteBucket(
 	ctx context.Context,
-	mc MinioClient,
+	mc backend.Provider,
 	claim *v1alpha1.BucketClaim,
 	class *v1alpha1.BucketClass,
 	accessKey string,
@@ -313,4 +316,3 @@ func ApplyClaimParameterExtensions(claim *v1alpha1.BucketClaim, parameters map[s
 
 	return nil
 }
-
