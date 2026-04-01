@@ -26,6 +26,7 @@ when versioned releases are published.
 ### Fixed
 
 - **E2E (COSI steps 8a/8b):** replace `kubectl delete --wait=true` on `BucketAccess` / `BucketClaim` with `--wait=false` plus bounded `wait_resource_gone` (using `COSI_WAIT_TIMEOUT`) so stuck finalizers fail fast with diagnostics instead of hanging CI; add heartbeat logs while polling.
+- **E2E:** `wait_resource_gone` now accepts kubectl-style timeouts (e.g. default `COSI_WAIT_TIMEOUT=300s`) by stripping a trailing `s`/`S` before bash arithmetic, fixing `value too great for base` errors in CI.
 
 ## [v0.2.0] - 2026-03-31
 

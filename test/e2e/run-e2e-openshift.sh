@@ -180,7 +180,13 @@ wait_resource_gone() {
   local kind="$1"
   local namespace="$2"
   local name="$3"
-  local timeout_seconds="${4:-120}"
+  # Accept plain seconds or kubectl-style duration (e.g. 300s); arithmetic needs an integer.
+  local timeout_raw="${4:-120}"
+  local timeout_seconds="${timeout_raw%s}"
+  timeout_seconds="${timeout_seconds%S}"
+  if ! [[ "${timeout_seconds}" =~ ^[0-9]+$ ]]; then
+    timeout_seconds=120
+  fi
   local deadline=$((SECONDS+timeout_seconds))
   local last_log="$SECONDS"
 
