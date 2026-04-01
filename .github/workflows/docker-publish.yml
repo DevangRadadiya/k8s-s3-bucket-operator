@@ -72,3 +72,46 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: bin/manager-linux-amd64
+
+  # After :main is published, pull that image and run the same kind E2E as test.yml uses for a local build.
+  e2e-kind-ghcr:
+    name: E2E (kind) with published ghcr.io :main image
+    runs-on: ubuntu-latest
+    needs: push_to_registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up kind
+        uses: helm/kind-action@v1.14.0
+
+      - name: Log in to GHCR (read published image)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and load operator image into kind
+        run: |
+          IMG="ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]'):main"
+          docker pull "$IMG"
+          echo "Kind clusters:" && kind get clusters
+          for c in $(kind get clusters); do
+            echo "Loading image into cluster: $c"
+            kind load docker-image "$IMG" --name "$c"
+          done
+
+      - name: Run E2E (MinIO + COSI) using published image
+        run: |
+          export OPERATOR_IMAGE="ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]'):main"
+          ./test/e2e/run.sh k8s

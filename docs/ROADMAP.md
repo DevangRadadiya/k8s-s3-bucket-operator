@@ -47,10 +47,12 @@ It is intentionally staged to keep reliability high while expanding scope.
 
 ### Wave 3: Multi-backend foundation (target ~6-12 months)
 
-- Introduce backend abstraction layer
-- Keep MinIO as baseline adapter
-- Add AWS backend first with end-to-end validation
-- Publish capability matrix per backend
+- Introduce backend abstraction layer — **shipped (MVP):** `internal/backend` + MinIO/AWS adapters; shared from standalone reconcile and COSI paths.
+- Keep MinIO as baseline adapter — **shipped**
+- Add AWS backend first with end-to-end validation — **shipped (MVP):** AWS provisioning + unit tests + user docs (`docs/AWS.md`) + manual smoke (`test/manual/aws-smoke.sh`). **Remaining for full “support policy” closure:** automated **AWS** E2E in GitHub Actions (needs long-lived or disposable AWS test account / IAM scoping strategy—not in CI yet); optional LocalStack-style emulation if adopted later.
+- Publish capability matrix per backend — **shipped:** `docs/CAPABILITY_MATRIX.md` (refreshed as backends evolve).
+
+**Wave 3 not in scope here (later waves):** Ceph RGW / additional providers (`Planned` in matrix), quota/replication depth on AWS (`Known limitations` in `docs/AWS.md`), cross-bucket workflows (**Wave 4**).
 
 ### Wave 4: Cross-bucket and cross-backend workflows (post-foundation)
 
