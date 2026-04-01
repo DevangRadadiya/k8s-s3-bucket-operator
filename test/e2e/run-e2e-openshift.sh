@@ -182,6 +182,7 @@ wait_resource_gone() {
   local name="$3"
   local timeout_seconds="${4:-120}"
   local deadline=$((SECONDS+timeout_seconds))
+  local last_log="$SECONDS"
 
   while [ $SECONDS -lt $deadline ]; do
     if [ -n "${namespace}" ]; then
@@ -193,10 +194,20 @@ wait_resource_gone() {
         return 0
       fi
     fi
+    # Heartbeat so CI logs do not look stuck while a finalizer runs.
+    if [ $((SECONDS - last_log)) -ge 45 ]; then
+      echo "    ... still waiting for ${kind}/${name} (namespace=${namespace}) to delete ($((deadline - SECONDS))s left)"
+      last_log=$SECONDS
+    fi
     sleep 2
   done
 
-  echo "Error: ${kind} ${name} still exists (namespace='${namespace}')"
+  echo "Error: ${kind} ${name} still exists (namespace='${namespace}') after ${timeout_seconds}s — check finalizers and operator logs"
+  if [ -n "${namespace}" ]; then
+    "${KUBECTL_BIN}" get "${kind}" "${name}" -n "${namespace}" -o yaml 2>/dev/null | head -n 80 || true
+  else
+    "${KUBECTL_BIN}" get "${kind}" "${name}" -o yaml 2>/dev/null | head -n 80 || true
+  fi
   return 1
 }
 
@@ -438,7 +449,10 @@ if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKE
 fi
 
 echo "==> 8a. Deleting BucketAccess should revoke credentials but keep bucket"
-"${KUBECTL_BIN}" delete bucketaccess "${COSI_BUCKETACCESS}" -n "${APP_NS}" --wait=true
+# Do not use kubectl --wait=true here: if the finalizer never completes (e.g. transient
+# RevokeAccess failures), the CLI can block until CI times out. Poll with a hard deadline instead.
+"${KUBECTL_BIN}" delete bucketaccess "${COSI_BUCKETACCESS}" -n "${APP_NS}" --wait=false >/dev/null 2>&1 || true
+wait_resource_gone "bucketaccess" "${APP_NS}" "${COSI_BUCKETACCESS}" "${COSI_WAIT_TIMEOUT}"
 wait_secret_gone "${COSI_CREDS_SECRET}" "${APP_NS}" 240
 if assert_minio_user_exists "${ACCESS_KEY}"; then
   echo "Error: expected MinIO user ${ACCESS_KEY} to be removed after BucketAccess deletion"
@@ -450,7 +464,8 @@ if ! "${KUBECTL_BIN}" exec -n "${MINIO_NS}" deploy/minio -- ls -ld "${COSI_BUCKE
 fi
 
 echo "==> 8b. Deleting BucketClaim should delete bucket when BucketClass deletionPolicy=Delete"
-"${KUBECTL_BIN}" delete bucketclaim "${COSI_BUCKETCLAIM}" -n "${APP_NS}" --wait=true
+"${KUBECTL_BIN}" delete bucketclaim "${COSI_BUCKETCLAIM}" -n "${APP_NS}" --wait=false >/dev/null 2>&1 || true
+wait_resource_gone "bucketclaim" "${APP_NS}" "${COSI_BUCKETCLAIM}" "${COSI_WAIT_TIMEOUT}"
 wait_bucket_gone "${COSI_BUCKET_NAME}" 300
 
 echo ""

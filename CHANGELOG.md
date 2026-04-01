@@ -23,6 +23,10 @@ when versioned releases are published.
 
 - Helm chart **0.2.2**: CRD packaging sync for `bucketPolicyRef`.
 
+### Fixed
+
+- **E2E (COSI steps 8a/8b):** replace `kubectl delete --wait=true` on `BucketAccess` / `BucketClaim` with `--wait=false` plus bounded `wait_resource_gone` (using `COSI_WAIT_TIMEOUT`) so stuck finalizers fail fast with diagnostics instead of hanging CI; add heartbeat logs while polling.
+
 ## [v0.2.0] - 2026-03-31
 
 ### Added
