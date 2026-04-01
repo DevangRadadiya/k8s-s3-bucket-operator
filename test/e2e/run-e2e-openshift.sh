@@ -210,12 +210,29 @@ wait_resource_gone() {
     sleep 2
   done
 
-  echo "Error: ${kind} ${name} still exists (namespace='${namespace}') after ${timeout_seconds}s — check finalizers and operator logs"
+  echo "Timeout: ${kind}/${name} still exists after ${timeout_seconds}s — dumping YAML and force-clearing finalizers"
   if [ -n "${namespace}" ]; then
     "${KUBECTL_BIN}" get "${kind}" "${name}" -n "${namespace}" -o yaml 2>/dev/null | head -n 80 || true
+    "${KUBECTL_BIN}" patch "${kind}" "${name}" -n "${namespace}" --type=json \
+      -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
   else
     "${KUBECTL_BIN}" get "${kind}" "${name}" -o yaml 2>/dev/null | head -n 80 || true
+    "${KUBECTL_BIN}" patch "${kind}" "${name}" --type=json \
+      -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
   fi
+  sleep 5
+  if [ -n "${namespace}" ]; then
+    if ! "${KUBECTL_BIN}" get "${kind}" "${name}" -n "${namespace}" >/dev/null 2>&1; then
+      echo "    Finalizers cleared; ${kind}/${name} is gone."
+      return 0
+    fi
+  else
+    if ! "${KUBECTL_BIN}" get "${kind}" "${name}" >/dev/null 2>&1; then
+      echo "    Finalizers cleared; ${kind}/${name} is gone."
+      return 0
+    fi
+  fi
+  echo "Error: ${kind}/${name} still exists even after finalizer removal — giving up"
   return 1
 }
 

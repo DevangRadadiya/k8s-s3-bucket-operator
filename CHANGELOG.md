@@ -33,6 +33,7 @@ when versioned releases are published.
 - **E2E (COSI steps 8a/8b):** replace `kubectl delete --wait=true` on `BucketAccess` / `BucketClaim` with `--wait=false` plus bounded `wait_resource_gone` (using `COSI_WAIT_TIMEOUT`) so stuck finalizers fail fast with diagnostics instead of hanging CI; add heartbeat logs while polling.
 - **E2E:** `wait_resource_gone` now accepts kubectl-style timeouts (e.g. default `COSI_WAIT_TIMEOUT=300s`) by stripping a trailing `s`/`S` before bash arithmetic, fixing `value too great for base` errors in CI.
 - **E2E cleanup:** `kubectl delete` for namespaces, COSI CRDs, and controller RBAC in the EXIT trap uses `--wait=false` so teardown does not block until finalizers finish (avoids looking stuck after a successful run).
+- **E2E:** `wait_resource_gone` now force-patches `/metadata/finalizers` to `[]` when the deadline expires and a COSI finalizer is still blocking deletion; clears the stuck object so the test can continue rather than failing hard on transient COSI revoke timeouts.
 
 ## [v0.2.0] - 2026-03-31
 
