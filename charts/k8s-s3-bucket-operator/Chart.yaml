@@ -6,7 +6,7 @@ icon: https://raw.githubusercontent.com/cncf/artwork/main/projects/kubernetes/ic
 # Chart version — bump when changing templates/values/crds packaging
 version: 0.2.2
 # Default operator image tag when values.image.tag is empty
-appVersion: "0.2.0"
+appVersion: "0.2.2"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/DevangRadadiya/k8s-s3-bucket-operator
 sources:
