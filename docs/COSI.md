@@ -49,7 +49,7 @@ This will:
 You need the same ingredients as Helm:
 
 - apply COSI CRDs + controller manifests (`deploy/cosi/`)
-- patch the operator `Deployment` to add env + volume + sidecar (see `test/e2e/run-e2e.sh` for a reference patch)
+- patch the operator `Deployment` to add env + volume + sidecar (see `test/e2e/run-e2e.sh` and `test/e2e/run-e2e-openshift.sh` for reference patches)
 
 ## Driver matching rules
 
@@ -57,6 +57,7 @@ You need the same ingredients as Helm:
 
 - Helm: `.Values.cosi.driverName`
 - env: `COSI_DRIVER_NAME`
+- `BucketAccessClass.authenticationType` must be `Key` (this operator currently supports only COSI key-based credentials)
 
 ## Passing “enterprise” knobs through COSI `BucketClass.parameters`
 
@@ -101,6 +102,8 @@ Both modes share the same MinIO backend logic; enabling COSI mode does **not** r
    - Set `COSI_ENABLED=true` (Helm: `.Values.cosi.enabled=true`) and ensure the sidecar + socket volume are present.
 4. **Introduce COSI BucketClasses / BucketAccessClasses**:
    - Create COSI `BucketClass` / `BucketAccessClass` objects that map to your existing MinIO configuration.
+   - Ensure `driverName` matches the operator's `COSI_DRIVER_NAME` (Helm `.Values.cosi.driverName`).
+   - Ensure `BucketAccessClass.authenticationType: Key`.
 5. **Migrate workloads gradually**:
    - New apps: use COSI `BucketClaim` + `BucketAccess`.
    - Existing apps: keep using standalone `BucketClaim` until you are ready to migrate and test them under COSI.
@@ -128,3 +131,12 @@ The COSI E2E scripts (`test/e2e/run-e2e*.sh`) run in a local cluster and validat
 - Deletion flows behave as expected:
   - `BucketAccess` deletion revokes access but does **not** delete the backend bucket.
   - `BucketClaim` deletion respects the `BucketClass.deletionPolicy`.
+
+## Validation checklist (what to check after migration)
+
+- `BucketClaim.status.phase` becomes `Bound`
+- `BucketClaim.status.conditions[type=Ready].status` becomes `True` with reason `BucketProvisioned`
+- `BucketAccess.status.accessGranted` becomes `true`
+- The credentials `Secret` referenced by `BucketAccess.spec.credentialsSecretName` contains `BucketInfo` JSON under `.data.BucketInfo`
+- Deleting `BucketAccess` clears the MinIO user created for that access (but keeps the backend bucket directory)
+- Deleting `BucketClaim` deletes (or retains) the backend bucket depending on `BucketClass.deletionPolicy`
